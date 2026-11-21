@@ -1,0 +1,7 @@
+/bin/
+/state/
+*.pem
+*.key
+*.crt
+*.csr
+*.srl

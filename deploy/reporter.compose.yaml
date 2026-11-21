@@ -1,0 +1,30 @@
+services:
+  reporter:
+    build:
+      context: ..
+      target: reporter
+    restart: unless-stopped
+    user: "${REPORTER_UID:?set reporter UID}:${REPORTER_GID:?set reporter GID}"
+    group_add: ["${SOCKET_GID:?set orchestrator health socket group GID}"]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    volumes:
+      - "${REPORTER_CONFIG:?set reporter credentials directory}:/etc/bridge-health:ro"
+      - "${REPORTER_STATE:?set reporter state directory}:/state"
+      - "${SOCKET_DIR:-/run/orchestrator-health}:/run/orchestrator-health:ro"
+    command:
+      - -socket
+      - /run/orchestrator-health/health.sock
+      - -collector
+      - "${COLLECTOR_URL:?set HTTPS heartbeat URL}"
+      - -stream
+      - "${STREAM_ID:?set enrolled stream UUID}"
+      - -state
+      - /state
+      - -cert
+      - /etc/bridge-health/reporter.crt
+      - -key
+      - /etc/bridge-health/reporter.key
+      - -server-ca
+      - /etc/bridge-health/server-ca.crt
