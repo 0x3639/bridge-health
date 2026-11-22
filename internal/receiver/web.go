@@ -32,6 +32,7 @@ var pages = template.Must(template.ParseFS(assets, "assets/pages.html"))
 const sessionCookie = "__Host-bridge-health"
 
 type web struct {
+	tokens                                          *apiTokens
 	fleet                                           *fleet
 	origin, statusOrigin, endpoint, downloads, user string
 	publicCache                                     statusCache
@@ -65,7 +66,11 @@ func newWeb(f *fleet, origin, statusOrigin, endpoint, downloads, user, password 
 	values, _ := json.Marshal(checks)
 	src := strings.Replace(string(script), "\"@@BASE_URL@@\"", fmt.Sprintf("%q", origin), 1)
 	src = strings.Replace(src, "\"@@CHECKSUMS@@\"", string(values), 1)
-	return &web{fleet: f, origin: origin, statusOrigin: statusOrigin, endpoint: endpoint, downloads: downloads, user: user, password: sha256.Sum256([]byte(password)),
+	tokens, err := openAPITokens(f.dir)
+	if err != nil {
+		return nil, err
+	}
+	return &web{tokens: tokens, fleet: f, origin: origin, statusOrigin: statusOrigin, endpoint: endpoint, downloads: downloads, user: user, password: sha256.Sum256([]byte(password)),
 		loginRate: rate.NewLimiter(rate.Every(2*time.Second), 12), enrollRate: rate.NewLimiter(4, 20),
 		sessions: map[string]time.Time{}, installer: []byte(src)}, nil
 }
@@ -80,7 +85,15 @@ func (a *web) handler() http.Handler {
 	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		a.render(w, 200, page{View: "public", Title: "Pillar status"})
 	})
+	m.HandleFunc("GET /api/docs", func(w http.ResponseWriter, r *http.Request) {
+		a.render(w, http.StatusOK, page{View: "api-docs", Title: "Status API guide", Origin: a.statusOrigin})
+	})
 	m.HandleFunc("GET /api/status", a.publicStatus)
+	m.HandleFunc("GET /api/v1/status", a.requireAPIToken(a.apiStatus))
+	m.HandleFunc("GET /api/v1/status/{stream}", a.requireAPIToken(a.apiStream))
+	m.HandleFunc("GET /admin/tokens", a.admin(func(w http.ResponseWriter, r *http.Request) { a.tokenPage(w, 200, "", "") }))
+	m.HandleFunc("POST /admin/tokens", a.admin(a.issueToken))
+	m.HandleFunc("POST /admin/tokens/{id}/revoke", a.admin(a.revokeToken))
 	m.HandleFunc("GET /admin", a.admin(a.dashboard))
 	m.HandleFunc("POST /nodes/{id}/producer", a.admin(a.setProducer))
 	m.HandleFunc("GET /invitations", a.admin(func(w http.ResponseWriter, r *http.Request) { a.invitations(w, 200, "", "") }))
@@ -206,6 +219,8 @@ type row struct {
 	Sequence                             uint64
 }
 type page struct {
+	Tokens                                 []tokenInfo `json:",omitempty"`
+	IssuedToken                            string      `json:",omitempty"`
 	View, Title, Error, Link, Origin, User string
 	Nodes, Invites                         []row
 	Detail                                 *row

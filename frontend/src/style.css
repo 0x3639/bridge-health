@@ -280,7 +280,7 @@ tbody tr:hover {
   background: var(--muted);
 }
 .status-table {
-  min-width: 1060px;
+  min-width: 960px;
 }
 .pillar {
   color: var(--primary);
@@ -357,6 +357,13 @@ td.mono {
 }
 .empty p {
   color: var(--muted-foreground);
+}
+.api-guide {
+  max-width: 90ch;
+  margin-inline: auto;
+}
+.api-guide code {
+  overflow-wrap: anywhere;
 }
 .guide {
   color: var(--muted-foreground);
