@@ -3,10 +3,13 @@ package reporter
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -70,5 +73,45 @@ func TestRetryAfterDefersSampling(t *testing.T) {
 	}
 	if next := r.NextSend(start); next.Sub(start) < 120*time.Second {
 		t.Fatalf("ignored Retry-After: %v", next)
+	}
+}
+
+func TestReporterReadDuration(t *testing.T) {
+	c, err := wire.Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := New("/unused", "https://receiver.invalid"+wire.Path, "e71664d3-a7ba-4029-8e17-95a5d0b85537", t.TempDir(), &tls.Config{}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := os.ReadFile("../wire/schemas/testdata/startup.heartbeat.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report wire.Report
+	if err = json.Unmarshal([]byte(strings.ReplaceAll(string(fixture), "2026-11-21T12:00:01Z", time.Now().UTC().Format(time.RFC3339Nano))), &report); err != nil {
+		t.Fatal(err)
+	}
+	outcome := http.StatusOK
+	r.local.Transport = roundTrip(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: outcome, Body: io.NopCloser(strings.NewReader(`{"error":"","result":` + string(report.Snapshot) + `}`))}, nil
+	})
+	r.remote.Transport = roundTrip(func(req *http.Request) (*http.Response, error) {
+		value := req.Header.Get(wire.LocalReadHeader)
+		if outcome == 200 {
+			if _, err := strconv.ParseUint(value, 10, 32); err != nil {
+				t.Errorf("missing successful read timing: %q", value)
+			}
+		} else if value != "" {
+			t.Error("included timing for failed read")
+		}
+		return &http.Response{StatusCode: 204, Body: http.NoBody}, nil
+	})
+	for _, status := range []int{200, 404} {
+		outcome = status
+		if _, err := r.Once(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

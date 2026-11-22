@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 type Stored struct {
 	Node       string      `json:"nodeId"`
 	ReceivedAt time.Time   `json:"receivedAt"`
+	ReadMicros *uint32     `json:"readMicros,omitempty"`
 	Digest     string      `json:"bodySHA256"`
 	Report     wire.Report `json:"heartbeat"`
 }
@@ -130,7 +132,12 @@ func (s *Collector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(403)
 		return
 	}
-	status, err = s.accept(fp, e, rep, fingerprint(data), time.Now().UTC())
+	var readMicros *uint32
+	if n, err := strconv.ParseUint(r.Header.Get(wire.LocalReadHeader), 10, 32); err == nil && n <= 60_000_000 && rep.LocalRead == "ok" {
+		measured := uint32(n)
+		readMicros = &measured
+	}
+	status, err = s.accept(fp, e, rep, fingerprint(data), time.Now().UTC(), readMicros)
 	if err != nil {
 		log.Printf("persist heartbeat for %s: %v", e.Stream, err)
 	}
@@ -153,7 +160,7 @@ func readLatest(dir, stream string) (*streamState, error) {
 	}
 	return &prev, nil
 }
-func (s *Collector) accept(fp string, e Enrollment, rep wire.Report, digest string, now time.Time) (int, error) {
+func (s *Collector) accept(fp string, e Enrollment, rep wire.Report, digest string, now time.Time, readMicros *uint32) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, ok := s.registry.byCert[fp]
@@ -182,7 +189,7 @@ func (s *Collector) accept(fp string, e Enrollment, rep wire.Report, digest stri
 	if rep.SentAt.Before(now.Add(-wire.MaxAge)) || rep.SentAt.After(now.Add(wire.FutureSkew)) {
 		return 400, nil
 	}
-	record := streamState{Stored: Stored{Node: e.Node, ReceivedAt: now, Digest: digest, Report: rep}}
+	record := streamState{Stored: Stored{Node: e.Node, ReceivedAt: now, Digest: digest, Report: rep, ReadMicros: readMicros}}
 	if prev != nil {
 		prior := prev.History
 		if len(prior) >= historyLimit {

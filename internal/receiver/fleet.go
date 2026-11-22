@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ import (
 type node struct {
 	ID            string     `json:"streamId"`
 	Name          string     `json:"nodeId"`
+	Producer      *string    `json:"producer,omitempty"`
 	Created       time.Time  `json:"created"`
 	InviteExpires time.Time  `json:"inviteExpires"`
 	TokenHash     string     `json:"tokenHash,omitempty"`
@@ -52,6 +54,7 @@ type fleet struct {
 	mu        sync.Mutex
 	dir       string
 	nodes     []node
+	revision  uint64
 	collector *collector.Collector
 	ca        *authority
 }
@@ -120,6 +123,7 @@ func (f *fleet) save(nodes []node) error {
 	}
 	f.collector.Reload(reg)
 	f.nodes = nodes
+	f.revision++
 	return nil
 }
 
@@ -217,6 +221,25 @@ func (f *fleet) revoke(id string, now time.Time) error {
 		next := slices.Clone(f.nodes)
 		next[i] = n
 		return f.save(next)
+	}
+	return errInactive
+}
+
+var producerAddress = regexp.MustCompile(`^z1[023456789acdefghjklmnpqrstuvwxyz]{38}$`)
+var errProducer = errors.New("enter a 40-character Zenon producer address starting with z1, or leave it empty")
+
+func (f *fleet) setProducer(id, address string) error {
+	if address != "" && !producerAddress.MatchString(address) {
+		return errProducer
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, n := range f.nodes {
+		if n.ID == id && len(n.Cert) != 0 && n.Revoked == nil {
+			next := slices.Clone(f.nodes)
+			next[i].Producer = &address
+			return f.save(next)
+		}
 	}
 	return errInactive
 }

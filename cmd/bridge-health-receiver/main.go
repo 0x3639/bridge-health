@@ -26,6 +26,7 @@ func main() {
 	flag.IntVar(&c.HeartbeatPort, "heartbeat-port", 8443, "externally reachable mTLS port")
 	flag.Parse()
 	c.Origin = env("PUBLIC_URL", "https://bridgehealth.0x3639.com")
+	c.StatusOrigin = env("STATUS_URL", c.Origin)
 	c.User = env("ADMIN_USERNAME", "admin")
 	c.Password = os.Getenv("ADMIN_PASSWORD")
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

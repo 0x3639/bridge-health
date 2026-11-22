@@ -42,7 +42,7 @@ func testReceiver(t *testing.T) *web {
 			t.Fatal(err)
 		}
 	}
-	a, err := newWeb(f, origin, endpoint, downloads, "admin", "receiver-test-password")
+	a, err := newWeb(f, origin, "https://bridgestatus.0x3639.com", endpoint, downloads, "admin", "receiver-test-password")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,8 @@ func TestManagedReceiver(t *testing.T) {
 		}
 		return w
 	}
-	call("GET", "/", "", "", "", 303)
+	call("GET", "/", "", "", "", 200)
+	call("GET", "/admin", "", "", "", 200)
 	call("POST", "/invitations", "name=blocked", origin, "", 303)
 	call("POST", "/login", "username=admin&password=wrong", origin, "", 401)
 	result := call("POST", "/login", "username=admin&password=receiver-test-password", origin, "", 303)
@@ -128,7 +129,7 @@ func TestManagedReceiver(t *testing.T) {
 		t.Fatal("session cookie protections missing")
 	}
 	call("POST", "/invitations", "name=blocked", "https://elsewhere.invalid", "", 403)
-	call("GET", "/", "", "", "", 200)
+	call("GET", "/admin", "", "", "", 200)
 	page := call("POST", "/invitations", "name=pilot-01", origin, "", 201).Body.String()
 	matches := regexp.MustCompile(regexp.QuoteMeta(origin) + `/install#([a-zA-Z0-9_.-]+)"`).FindStringSubmatch(page)
 	if len(matches) != 2 {
@@ -216,7 +217,13 @@ func TestManagedReceiver(t *testing.T) {
 	}
 	post := func(want int) {
 		t.Helper()
-		res, err := op.Post(endpoint, "application/json", bytes.NewReader(body))
+		req, err := http.NewRequest("POST", endpoint, bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(wire.LocalReadHeader, "1430")
+		res, err := op.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -231,7 +238,40 @@ func TestManagedReceiver(t *testing.T) {
 	if !strings.Contains(detail, "Fresh") || !strings.Contains(detail, "unreachable") {
 		t.Fatal("missing delivery or local socket status")
 	}
+	public := call("GET", "/api/status", "", "", "", 200).Body.String()
+	if !strings.Contains(public, "Socket unreachable") || strings.Contains(public, bundle.Stream) || strings.Contains(public, "certificate") || strings.Contains(public, "readMicros") {
+		t.Fatal("invalid public projection", public)
+	}
+	fixture, err := os.ReadFile("../wire/schemas/testdata/startup.heartbeat.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var good wire.Report
+	now := time.Now().UTC()
+	fixture = bytes.ReplaceAll(fixture, []byte("2026-11-21T12:00:01Z"), []byte(now.Format(time.RFC3339Nano)))
+	if err := json.Unmarshal(fixture, &good); err != nil {
+		t.Fatal(err)
+	}
+	good.Stream, good.Sequence = bundle.Stream, 2
+	body, err = json.Marshal(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post(204)
+	call("POST", "/nodes/"+bundle.Stream+"/producer", "producer=invalid", origin, "", 400)
+	const producer = "z1qqrzv35d4wk6n7fkfygay5g2zpgxyaamk84rla"
+	call("POST", "/nodes/"+bundle.Stream+"/producer", "producer="+producer, origin, "", 303)
+	online := call("GET", "/api/status", "", "", "", 200).Body.String()
+	if !strings.Contains(online, `"readMicros":1430`) || !strings.Contains(online, `"status":"Online"`) {
+		t.Fatal("successful read timing lost", online)
+	}
+	if !strings.Contains(online, producer) {
+		t.Fatal("public producer edit lost")
+	}
 	call("POST", "/nodes/"+bundle.Stream+"/revoke", "", origin, "", 303)
+	if strings.Contains(call("GET", "/api/status", "", "", "", 200).Body.String(), "pilot-01") {
+		t.Fatal("revoked node still public")
+	}
 	post(403)
 	call("POST", "/v1/enroll", string(csr), "", token, 403)
 	call("POST", "/logout", "", origin, "", 303)
@@ -271,5 +311,59 @@ func TestInviteExpiryCancellationAndConcurrentRedemption(t *testing.T) {
 	first, second := <-results, <-results
 	if !((first == nil && errors.Is(second, errInvite)) || (second == nil && errors.Is(first, errInvite))) {
 		t.Fatal("expected exactly one winning node key", first, second)
+	}
+}
+
+func TestStatusOriginAndPublicRoutes(t *testing.T) {
+	a := testReceiver(t)
+	h := a.handler()
+	call := func(method, host, path, site, body string, c *http.Cookie) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, host+path, strings.NewReader(body))
+		r.Header.Set("Origin", site)
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if c != nil {
+			r.AddCookie(c)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	site := a.statusOrigin
+	loginBody := "username=admin&password=receiver-test-password"
+	for _, pair := range [][2]string{{site, origin}, {origin, site}, {site, ""}, {site, "https://elsewhere.invalid"}} {
+		if got := call("POST", pair[0], "/admin", pair[1], loginBody, nil).Code; got != 403 {
+			t.Fatalf("accepted mismatched origin %v: %d", pair, got)
+		}
+	}
+	login := call("POST", site, "/admin", site, loginBody, nil)
+	if login.Code != 303 || login.Header().Get("Location") != "/admin" {
+		t.Fatal("status hostname login failed")
+	}
+	c := login.Result().Cookies()[0]
+	for _, session := range []*http.Cookie{nil, c} {
+		w := call("GET", site, "/", "", "", session)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `data-view="public"`) || strings.Contains(w.Body.String(), "/admin") {
+			t.Fatal("public homepage leaked a management link or required authentication")
+		}
+	}
+	secret := "restricted-pillar"
+	w := call("POST", site, "/invitations", site, "name="+secret, c)
+	if w.Code != 201 || !strings.Contains(w.Body.String(), origin+"/install#") {
+		t.Fatal("wrong installer origin")
+	}
+	if w := call("GET", site, "/api/status", "", "", nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"nodes":[]`) {
+		t.Fatal("pending invitation became public")
+	}
+	for _, path := range []string{"/nodes/unknown", "/invitations"} {
+		w := call("GET", site, path, "", "", nil)
+		if w.Code != 303 || w.Header().Get("Location") != "/admin" {
+			t.Fatalf("unprotected %s", path)
+		}
+	}
+	for _, file := range []string{"app.js", "vue.js", "PublicStatus.js", "Management.js", "app.css", "bridge.svg", "space-grotesk-latin-wght-normal.woff2", "jetbrains-mono-latin-wght-normal.woff2"} {
+		w := call("GET", site, "/assets/ui/"+file, "", "", nil)
+		if w.Code != 200 || w.Body.Len() == 0 {
+			t.Fatalf("missing asset %s", file)
+		}
 	}
 }

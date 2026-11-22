@@ -25,25 +25,24 @@ import (
 	"golang.org/x/time/rate"
 )
 
-//go:embed assets/*.html assets/*.css assets/*.js assets/install.py
+//go:embed assets/pages.html assets/ui assets/install.py
 var assets embed.FS
-var pages = template.Must(template.New("").Funcs(template.FuncMap{
-	"stamp": func(t time.Time) string { return t.UTC().Format("02 Jan 2006 · 15:04 UTC") },
-}).ParseFS(assets, "assets/*.html"))
+var pages = template.Must(template.ParseFS(assets, "assets/pages.html"))
 
 const sessionCookie = "__Host-bridge-health"
 
 type web struct {
-	fleet                             *fleet
-	origin, endpoint, downloads, user string
-	password                          [32]byte
-	loginRate, enrollRate             *rate.Limiter
-	mu                                sync.Mutex
-	sessions                          map[string]time.Time
-	installer                         []byte
+	fleet                                           *fleet
+	origin, statusOrigin, endpoint, downloads, user string
+	publicCache                                     statusCache
+	password                                        [32]byte
+	loginRate, enrollRate                           *rate.Limiter
+	mu                                              sync.Mutex
+	sessions                                        map[string]time.Time
+	installer                                       []byte
 }
 
-func newWeb(f *fleet, origin, endpoint, downloads, user, password string) (*web, error) {
+func newWeb(f *fleet, origin, statusOrigin, endpoint, downloads, user, password string) (*web, error) {
 	// Bind the script to this deployment and the exact artifacts built into its image.
 	script, err := assets.ReadFile("assets/install.py")
 	if err != nil {
@@ -66,7 +65,7 @@ func newWeb(f *fleet, origin, endpoint, downloads, user, password string) (*web,
 	values, _ := json.Marshal(checks)
 	src := strings.Replace(string(script), "\"@@BASE_URL@@\"", fmt.Sprintf("%q", origin), 1)
 	src = strings.Replace(src, "\"@@CHECKSUMS@@\"", string(values), 1)
-	return &web{fleet: f, origin: origin, endpoint: endpoint, downloads: downloads, user: user, password: sha256.Sum256([]byte(password)),
+	return &web{fleet: f, origin: origin, statusOrigin: statusOrigin, endpoint: endpoint, downloads: downloads, user: user, password: sha256.Sum256([]byte(password)),
 		loginRate: rate.NewLimiter(rate.Every(2*time.Second), 12), enrollRate: rate.NewLimiter(4, 20),
 		sessions: map[string]time.Time{}, installer: []byte(src)}, nil
 }
@@ -76,8 +75,14 @@ func (a *web) handler() http.Handler {
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	m.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) { a.render(w, 200, page{View: "login", Title: "Sign in"}) })
 	m.HandleFunc("POST /login", a.login)
+	m.HandleFunc("POST /admin", a.login)
 	m.HandleFunc("POST /logout", a.admin(a.logout))
-	m.HandleFunc("GET /{$}", a.admin(a.dashboard))
+	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		a.render(w, 200, page{View: "public", Title: "Pillar status"})
+	})
+	m.HandleFunc("GET /api/status", a.publicStatus)
+	m.HandleFunc("GET /admin", a.admin(a.dashboard))
+	m.HandleFunc("POST /nodes/{id}/producer", a.admin(a.setProducer))
 	m.HandleFunc("GET /invitations", a.admin(func(w http.ResponseWriter, r *http.Request) { a.invitations(w, 200, "", "") }))
 	m.HandleFunc("GET /nodes/{id}", a.admin(a.dashboard))
 	m.HandleFunc("POST /invitations", a.admin(a.invite))
@@ -100,24 +105,34 @@ func (a *web) handler() http.Handler {
 		http.ServeFile(w, r, filepath.Join(a.downloads, name))
 	})
 	m.HandleFunc("POST /v1/enroll", a.enroll)
-	for _, name := range []string{"app.css", "app.js"} {
-		m.HandleFunc("GET /assets/"+name, func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, assets, "assets/"+name) })
-	}
+	m.HandleFunc("GET /assets/ui/{file}", func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("file")
+		if strings.ContainsAny(name, "/\\") || name == "." || name == ".." {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFileFS(w, r, assets, "assets/ui/"+name)
+	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		if r.Method == "POST" {
 			r.Body = http.MaxBytesReader(w, r.Body, 12<<10)
 			// Browser management forms must originate on the configured HTTPS site.
-			if r.URL.Path != "/v1/enroll" && r.Header.Get("Origin") != a.origin {
+			if r.URL.Path != "/v1/enroll" && !a.sameOrigin(r) {
 				http.Error(w, "Invalid request origin", 403)
 				return
 			}
 		}
 		m.ServeHTTP(w, r)
 	})
+}
+
+func (a *web) sameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	return origin == "https://"+r.Host && (origin == a.origin || origin == a.statusOrigin)
 }
 
 func cookie(value string, age int) *http.Cookie {
@@ -152,7 +167,7 @@ func (a *web) login(w http.ResponseWriter, r *http.Request) {
 	a.sessions[digest([]byte(raw))] = now.Add(12 * time.Hour)
 	a.mu.Unlock()
 	http.SetCookie(w, cookie(raw, 12*60*60))
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 func (a *web) admin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +181,11 @@ func (a *web) admin(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		if r.Method == "GET" && r.URL.Path == "/admin" {
+			a.render(w, 200, page{View: "login", Title: "Sign in"})
+			return
+		}
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 	}
 }
 func (a *web) logout(w http.ResponseWriter, r *http.Request) {
@@ -175,11 +194,13 @@ func (a *web) logout(w http.ResponseWriter, r *http.Request) {
 	delete(a.sessions, digest([]byte(c.Value)))
 	a.mu.Unlock()
 	http.SetCookie(w, cookie("", -1))
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 type row struct {
-	node
+	ID, Name, Producer                   string
+	InviteExpires                        time.Time
+	Enrolled                             bool
 	State, Delivery, LocalRead, Snapshot string
 	LastSeen, CertExpires                time.Time
 	Sequence                             uint64
@@ -211,6 +232,10 @@ func (f *fleet) listNodes() []node {
 	return nodes
 }
 
+func adminRow(n node, now time.Time) row {
+	return row{ID: n.ID, Name: n.Name, Producer: n.publicProducer(), InviteExpires: n.InviteExpires, Enrolled: len(n.Cert) > 0, State: n.state(now)}
+}
+
 func (a *web) dashboard(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	id := r.PathValue("id")
@@ -225,8 +250,8 @@ func (a *web) dashboard(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		x := row{node: n, State: n.state(now)}
-		s, err := collector.StreamStatus(a.fleet.dir, collector.Enrollment{Node: n.Name, Stream: n.ID}, 3*time.Minute, now)
+		x := adminRow(n, now)
+		s, err := collector.StreamStatus(a.fleet.dir, collector.Enrollment{Node: n.Name, Stream: n.ID}, reportFreshness, now)
 		if err != nil {
 			serverError(w, err)
 			return
@@ -282,7 +307,7 @@ func (a *web) invitations(w http.ResponseWriter, status int, link, msg string) {
 	p := page{View: "invites", Title: "Invitations", User: a.user, Link: link, Error: msg}
 	now := time.Now().UTC()
 	for _, n := range a.fleet.listNodes() {
-		p.Invites = append(p.Invites, row{node: n, State: n.state(now)})
+		p.Invites = append(p.Invites, adminRow(n, now))
 	}
 	a.render(w, status, p)
 }
@@ -355,4 +380,19 @@ func (a *web) enroll(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(creds)
+}
+
+func (a *web) setProducer(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	err := a.fleet.setProducer(id, strings.TrimSpace(r.PostFormValue("producer")))
+	switch {
+	case errors.Is(err, errProducer):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, errInactive):
+		http.NotFound(w, r)
+	case err != nil:
+		serverError(w, err)
+	default:
+		http.Redirect(w, r, "/nodes/"+id, http.StatusSeeOther)
+	}
 }
