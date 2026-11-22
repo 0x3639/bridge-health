@@ -6,14 +6,61 @@
   <meta name="color-scheme" content="dark">
   <title>{{.Title}} · Bridge Health</title>
   <link rel="stylesheet" href="/assets/ui/app.css">
-  <script type="module" src="/assets/ui/app.js"></script>
+  {{if ne .View "api-docs"}}<script type="module" src="/assets/ui/app.js"></script>{{end}}
 </head>
 <body>
   <header><div class="bar"><a class="brand" href="/"><span class="brand-icon" aria-hidden="true"></span>Bridge Health</a><span class="network">Zenon Mainnet</span></div></header>
   <main id="app" data-view="{{.View}}">
+    {{if eq .View "api-docs"}}{{template "api-docs" .}}{{else}}
     {{if eq .View "public"}}<h1>Pillar status</h1><p>Loading pillar status…</p>{{end}}
-    <noscript>{{if eq .View "install"}}Download <a href="/install.py" download>bridge-health-install.py</a> on the orchestrator host, run <code>sudo python3 -I bridge-health-install.py</code> and paste your private installation URL.{{else if eq .View "public"}}Read the <a href="/api/status">current status as JSON</a> or enable JavaScript to view the dashboard.{{else}}Enable JavaScript to use receiver administration.{{end}}</noscript>
+    <noscript>{{if eq .View "install"}}Download <a href="/install.py" download>bridge-health-install.py</a> on the orchestrator host, run <code>sudo python3 -I bridge-health-install.py</code> and paste your private installation URL.{{else if eq .View "public"}}Read the <a href="/api/status">current status as JSON</a> or enable JavaScript to view the dashboard. See the <a href="/api/docs">API guide</a> for service integrations.{{else}}Enable JavaScript to use receiver administration.{{end}}</noscript>
+    {{end}}
   </main>
-  {{if ne .View "public"}}<script type="application/json" id="page">{{.}}</script>{{end}}
+  {{if and (ne .View "public") (ne .View "api-docs")}}<script type="application/json" id="page">{{.}}</script>{{end}}
 </body>
 </html>{{end}}
+
+{{define "api-docs"}}
+<article class="api-guide">
+  <div class="heading"><h1>Status API guide</h1></div>
+  <section class="panel create">
+    <h2>Make your first request</h2>
+    <p>Ask your Bridge Health administrator for a read-only token. Store it in your service’s secret store and load it into the <code>BRIDGE_HEALTH_TOKEN</code> environment variable.</p>
+    <pre><code>curl -fsS -H "Authorization: Bearer ${BRIDGE_HEALTH_TOKEN}" \
+  {{.Origin}}/api/v1/status</code></pre>
+    <p>The response lists each enrolled reporter. The <code>status</code> field summarizes its health. A new reporter can appear before its first heartbeat arrives.</p>
+    <details>
+      <summary>Example response for a new reporter</summary>
+      <pre><code>{
+  "updated": "2026-11-22T15:00:00Z",
+  "nodes": [{
+    "nodeId": "Example Pillar",
+    "streamId": "11111111-2222-4333-8444-555555555555",
+    "status": "Awaiting report",
+    "access": "active",
+    "delivery": "never",
+    "created": "2026-11-22T14:55:00Z",
+    "certificateExpires": "2027-11-22T14:56:00Z",
+    "latest": null
+  }]
+}</code></pre>
+    </details>
+  </section>
+  <section class="panel create">
+    <h2>Read status and history</h2>
+    <p><code>GET /api/v1/status</code> returns <code>updated</code> and <code>nodes</code>. After a successful read, <code>latest.heartbeat.snapshot</code> contains the build, bridge state, sync heights and per-chain wrap and unwrap observations. Check each observation’s <code>quality</code> and <code>asOf</code> before using its value.</p>
+    <p><code>GET /api/v1/status/{streamId}</code> returns <code>updated</code>, <code>node</code> and <code>history</code>. Use a <code>streamId</code> from the fleet response. History contains up to 30 earlier receipts, oldest first. When a socket read fails, the snapshot is null and <code>node.historicalSuccess</code> holds the last successful receipt if available.</p>
+    <p>All timestamps use UTC. The API omits IP addresses and redacts IP literals in pillar names and build labels.</p>
+  </section>
+  <section class="panel create">
+    <h2>Polling and errors</h2>
+    <p>Reporters usually check in once a minute. Each token allows one request per second on average, with a burst of ten.</p>
+    <dl>
+      <dt>401 Unauthorized</dt><dd>Check the bearer header and whether the token has expired or been revoked.</dd>
+      <dt>404 Not Found</dt><dd>Look up the stream ID in the fleet response.</dd>
+      <dt>429 Too Many Requests</dt><dd>Wait the number of seconds in the <code>Retry-After</code> header before retrying.</dd>
+      <dt>500 Internal Server Error</dt><dd>The receiver could not read the retained status. Retry on the next poll.</dd>
+    </dl>
+  </section>
+</article>
+{{end}}

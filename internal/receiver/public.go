@@ -16,6 +16,7 @@ const reportFreshness = 3 * time.Minute
 
 // Only these fields can leave the receiver through the public endpoint.
 type publicNode struct {
+	ID         string               `json:"id"`
 	Name       string               `json:"name"`
 	Producer   string               `json:"producer,omitempty"`
 	Status     string               `json:"status"`
@@ -37,31 +38,40 @@ type queuePair struct {
 	Unwrap observation `json:"unwrap"`
 }
 
-var networkNames = map[uint32]string{1: "ETH", 56: "BNB", 73405: "Supernova"}
+var networkNames = map[uint32]string{1: "ETH", 56: "BNB"}
+
+func reportHealth(s collector.Status) (status, reason string) {
+	switch {
+	case s.Latest == nil:
+		return "Awaiting report", ""
+	case s.Delivery == "stale":
+		return "Stale", "No recent heartbeat"
+	}
+	switch s.Latest.Report.LocalRead {
+	case "ok":
+		return "Online", ""
+	case "unreachable":
+		return "Unavailable", "Socket unreachable"
+	case "timeout":
+		return "Unavailable", "Socket timed out"
+	case "unsupported":
+		return "Unavailable", "Snapshot unsupported"
+	default:
+		return "Unavailable", "Invalid snapshot"
+	}
+}
 
 func project(n node, s collector.Status) (publicNode, error) {
-	p := publicNode{Name: n.Name, Producer: n.publicProducer(), Status: "Awaiting report"}
-	if s.Latest == nil {
-		return p, nil
-	}
+	status, reason := reportHealth(s)
+	// Derive the public row key from the random enrollment UUID. Display
+	// names can collide after redaction, and stream IDs are private.
+	p := publicNode{ID: digest([]byte("public-node:" + n.ID)), Name: redactIPText(n.Name),
+		Producer: n.publicProducer(), Status: status, Error: reason}
 	last := s.Latest
-	p.Checked = &last.ReceivedAt
-	if s.Delivery == "stale" {
-		p.Status, p.Error = "Stale", "No recent heartbeat"
-		return p, nil
+	if last != nil {
+		p.Checked = &last.ReceivedAt
 	}
-	if last.Report.LocalRead != "ok" {
-		p.Status = "Unavailable"
-		switch last.Report.LocalRead {
-		case "unreachable":
-			p.Error = "Socket unreachable"
-		case "timeout":
-			p.Error = "Socket timed out"
-		case "unsupported":
-			p.Error = "Snapshot unsupported"
-		default:
-			p.Error = "Invalid snapshot"
-		}
+	if status != "Online" {
 		return p, nil
 	}
 	// The collector has already validated the snapshot against the pinned schema.
@@ -76,7 +86,7 @@ func project(n node, s collector.Status) (publicNode, error) {
 	if err := json.Unmarshal(last.Report.Snapshot, &snapshot); err != nil {
 		return p, err
 	}
-	p.Status, p.State, p.Phase, p.ReadMicros = "Online", snapshot.BridgeState, snapshot.Phase, last.ReadMicros
+	p.State, p.Phase, p.ReadMicros = snapshot.BridgeState, snapshot.Phase, last.ReadMicros
 	if snapshot.NetworksKnown {
 		p.Queues = make(map[string]queuePair)
 		for _, network := range snapshot.Networks {
