@@ -1,0 +1,65 @@
+{{define "robots.txt" -}}
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /login
+Disallow: /logout
+Disallow: /nodes/
+Disallow: /invitations
+Disallow: /install
+Disallow: /downloads/
+Disallow: /v1/
+Disallow: /api/v1/
+Disallow: /healthz
+
+Sitemap: {{.Origin}}/sitemap.xml
+{{end}}
+
+{{define "sitemap.xml" -}}
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{.Origin}}/</loc></url>
+  <url><loc>{{.Origin}}/api/docs</loc></url>
+</urlset>
+{{end}}
+
+{{define "llms.txt" -}}
+# Bridge Health
+
+> Public health reports from enrolled pillar operators running Zenon mainnet bridge orchestrators.
+
+Fetch a current snapshot when answering status questions. Each row represents one enrolled pillar. Report the snapshot timestamp and use the last heartbeat receipt time when describing an individual pillar.
+
+Online means the latest heartbeat was fresh and the local snapshot read succeeded. Unavailable means the reporter checked in but the read failed. Stale means three minutes or more have elapsed since the last heartbeat. Awaiting report means an enrolled reporter has yet to send its first heartbeat.
+
+BNB (BNB Smart Chain) and ETH (Ethereum) counts show observed unsigned wraps and unwraps for each pillar. Several pillars can observe the same work. Preserve partial counts and unknown values when quoting them. The JSON provides the quality and observation time of each count.
+
+## Current public status
+
+- [Pillar status in Markdown]({{.Origin}}/index.md)
+- [Pillar status in JSON]({{.Origin}}/api/status)
+- [Interactive pillar dashboard]({{.Origin}}/)
+
+## Optional
+
+- [Service API guide for integrations using a bearer token]({{.Origin}}/api/docs)
+{{end}}
+
+{{define "index.md" -}}
+# Zenon bridge pillar status
+
+Health reports from enrolled bridge orchestrators on Zenon mainnet.
+
+Snapshot generated at {{.Public.Updated.UTC.Format "2006-01-02T15:04:05Z"}}.
+{{if .Public.Nodes}}
+| Pillar | Reporter status | Bridge state or phase | Producer | BNB wraps / unwraps | ETH wraps / unwraps | Local read (µs) | Last heartbeat (UTC) | Error |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+{{range .Public.Nodes -}}
+| {{cell .Name}} | {{.Status}} | {{or .State .Phase "—"}} | {{or .Producer "—"}} | {{.QueueCounts "BNB"}} | {{.QueueCounts "ETH"}} | {{with .ReadMicros}}{{.}}{{else}}—{{end}} | {{with .Checked}}{{.UTC.Format "2006-01-02T15:04:05Z"}}{{else}}—{{end}} | {{or .Error "—"}} |
+{{end}}
+Counts are observed unsigned requests. A partial count includes only the work observed so far. A dash or “unknown” indicates an unavailable measurement.
+{{else}}
+No enrolled pillars yet.
+{{end}}
+[Status definitions]({{.Origin}}/llms.txt) · [Full public snapshot as JSON]({{.Origin}}/api/status) · [Dashboard]({{.Origin}}/)
+{{end}}

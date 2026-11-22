@@ -7,3 +7,4 @@
 *.srl
 
 /frontend/node_modules/
+/generated_images/

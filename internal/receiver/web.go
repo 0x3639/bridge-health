@@ -25,7 +25,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-//go:embed assets/pages.html assets/ui assets/install.py
+//go:embed assets/pages.html assets/ui assets/install.py assets/share assets/discovery.txt
 var assets embed.FS
 var pages = template.Must(template.ParseFS(assets, "assets/pages.html"))
 
@@ -35,7 +35,6 @@ type web struct {
 	tokens                                          *apiTokens
 	fleet                                           *fleet
 	origin, statusOrigin, endpoint, downloads, user string
-	publicCache                                     statusCache
 	password                                        [32]byte
 	loginRate, enrollRate                           *rate.Limiter
 	mu                                              sync.Mutex
@@ -82,9 +81,8 @@ func (a *web) handler() http.Handler {
 	m.HandleFunc("POST /login", a.login)
 	m.HandleFunc("POST /admin", a.login)
 	m.HandleFunc("POST /logout", a.admin(a.logout))
-	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		a.render(w, 200, page{View: "public", Title: "Pillar status"})
-	})
+	m.HandleFunc("GET /{$}", a.publicPage)
+	a.discoveryRoutes(m)
 	m.HandleFunc("GET /api/docs", func(w http.ResponseWriter, r *http.Request) {
 		a.render(w, http.StatusOK, page{View: "api-docs", Title: "Status API guide", Origin: a.statusOrigin})
 	})
@@ -219,8 +217,9 @@ type row struct {
 	Sequence                             uint64
 }
 type page struct {
-	Tokens                                 []tokenInfo `json:",omitempty"`
-	IssuedToken                            string      `json:",omitempty"`
+	Public                                 *publicSnapshot `json:"-"`
+	Tokens                                 []tokenInfo     `json:",omitempty"`
+	IssuedToken                            string          `json:",omitempty"`
 	View, Title, Error, Link, Origin, User string
 	Nodes, Invites                         []row
 	Detail                                 *row
