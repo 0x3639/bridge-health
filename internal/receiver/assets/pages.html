@@ -5,20 +5,74 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>{{.Title}} · Bridge Health</title>
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48 64x64">
+  {{if eq .View "public" -}}
+  {{$description := "View the latest heartbeat, bridge state, and observed Ethereum and BNB Smart Chain wrap and unwrap queues for each enrolled Zenon pillar." -}}
+  {{$imageAlt := "Bridge Health — tokens moving between the Zenon and Ethereum networks." -}}
+  <meta name="description" content="{{$description}}">
+  <link rel="canonical" href="{{.Origin}}/">
+  <link rel="alternate" type="text/markdown" href="/index.md" title="Pillar status in Markdown">
+  <link rel="alternate" type="application/json" href="/api/status" title="Public status snapshot">
+  <link rel="describedby" type="text/plain" href="/llms.txt" title="Bridge Health guide">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Bridge Health">
+  <meta property="og:title" content="{{.Title}} · Bridge Health">
+  <meta property="og:description" content="{{$description}}">
+  <meta property="og:url" content="{{.Origin}}/">
+  <meta property="og:image" content="{{.Origin}}/bridge-health.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="{{$imageAlt}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="{{.Origin}}/bridge-health.jpg">
+  <meta name="twitter:image:alt" content="{{$imageAlt}}">
+  {{else if eq .View "api-docs" -}}
+  <link rel="canonical" href="{{.Origin}}/api/docs">
+  <meta name="description" content="Use the Bridge Health service API to query enrolled reporters and their heartbeat history.">
+  {{else -}}
+  <meta name="robots" content="noindex, nofollow">
+  {{end -}}
   <link rel="stylesheet" href="/assets/ui/app.css">
   {{if ne .View "api-docs"}}<script type="module" src="/assets/ui/app.js"></script>{{end}}
 </head>
 <body>
   <header><div class="bar"><a class="brand" href="/"><span class="brand-icon" aria-hidden="true"></span>Bridge Health</a><span class="network">Zenon Mainnet</span></div></header>
   <main id="app" data-view="{{.View}}">
-    {{if eq .View "api-docs"}}{{template "api-docs" .}}{{else}}
-    {{if eq .View "public"}}<h1>Pillar status</h1><p>Loading pillar status…</p>{{end}}
-    <noscript>{{if eq .View "install"}}Download <a href="/install.py" download>bridge-health-install.py</a> on the orchestrator host, run <code>sudo python3 -I bridge-health-install.py</code> and paste your private installation URL.{{else if eq .View "public"}}Read the <a href="/api/status">current status as JSON</a> or enable JavaScript to view the dashboard. See the <a href="/api/docs">API guide</a> for service integrations.{{else}}Enable JavaScript to use receiver administration.{{end}}</noscript>
-    {{end}}
+    {{if eq .View "public"}}{{template "public-status" .Public}}
+    {{else if eq .View "api-docs"}}{{template "api-docs" .}}
+    {{else}}<noscript>{{if eq .View "install"}}Download <a href="/install.py" download>bridge-health-install.py</a> on the orchestrator host, run <code>sudo python3 -I bridge-health-install.py</code> and paste your private installation URL.{{else}}Enable JavaScript to use receiver administration.{{end}}</noscript>{{end}}
   </main>
-  {{if and (ne .View "public") (ne .View "api-docs")}}<script type="application/json" id="page">{{.}}</script>{{end}}
+  {{if eq .View "public"}}<script type="application/json" id="public-snapshot">{{.Public}}</script>
+  {{else if ne .View "api-docs"}}<script type="application/json" id="page">{{.}}</script>{{end}}
 </body>
 </html>{{end}}
+
+{{define "public-status" -}}
+  <div class="heading"><div><h1>Pillar status</h1><p class="sub">Health reports from enrolled bridge orchestrators on Zenon mainnet.</p></div></div>
+  {{if .}}
+  <section class="panel">
+    <div class="panel-head">Last update <time datetime="{{.Updated.UTC.Format "2006-01-02T15:04:05Z"}}">{{.Updated.UTC.Format "2006-01-02 15:04:05 UTC"}}</time></div>
+    {{if .Nodes}}
+    <div class="scroll"><table class="status-table">
+      <thead><tr><th scope="col">Pillar</th><th scope="col">Status</th><th scope="col">State or phase</th><th scope="col">Producer</th><th scope="col">BNB wraps / unwraps</th><th scope="col">ETH wraps / unwraps</th><th scope="col">Local read</th><th scope="col">Last checked (UTC)</th><th scope="col">Error</th></tr></thead>
+      <tbody>{{range .Nodes}}<tr>
+        <th scope="row" class="pillar">{{.Name}}</th>
+        <td data-label="Status"><span class="pill" data-state="{{.Status}}">{{.Status}}</span></td>
+        <td data-label="State or phase">{{or .State .Phase "—"}}</td>
+        <td data-label="Producer" class="mono">{{or .Producer "—"}}</td>
+        <td data-label="BNB wraps / unwraps">{{.QueueCounts "BNB"}}</td>
+        <td data-label="ETH wraps / unwraps">{{.QueueCounts "ETH"}}</td>
+        <td data-label="Local read">{{with .ReadMicros}}{{.}} µs{{else}}—{{end}}</td>
+        <td data-label="Last checked (UTC)">{{with .Checked}}<time datetime="{{.UTC.Format "2006-01-02T15:04:05Z"}}">{{.UTC.Format "2006-01-02 15:04:05"}}</time>{{else}}—{{end}}</td>
+        <td data-label="Error">{{or .Error "—"}}</td>
+      </tr>{{end}}</tbody>
+    </table></div>
+    {{else}}<p class="empty">No enrolled pillars yet.</p>{{end}}
+  </section>
+  {{else}}<p class="error">The latest pillar status is temporarily unavailable.</p>{{end}}
+  <p class="guide"><a href="/llms.txt">Status definitions</a> · <a href="/index.md">Markdown</a> · <a href="/api/status">JSON</a> · <a href="/api/docs">Status API guide</a></p>
+{{end}}
 
 {{define "api-docs"}}
 <article class="api-guide">

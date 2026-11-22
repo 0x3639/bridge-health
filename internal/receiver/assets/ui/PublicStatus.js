@@ -56,9 +56,11 @@ import { computed, onMounted, onUnmounted, ref } from './vue.js'
 
 export default {
   __name: 'PublicStatus',
+  props: { initial: Object },
   setup(__props) {
 
-const data = ref(null)
+const props = __props
+const data = ref(props.initial ?? null)
 const failure = ref(false)
 const loading = ref(false)
 const query = ref('')
@@ -95,7 +97,7 @@ function refreshVisible() {
   if (!document.hidden) refresh()
 }
 onMounted(() => {
-  refresh()
+  if (!data.value) refresh()
   timer = setInterval(refreshVisible, 30000)
   document.addEventListener('visibilitychange', refreshVisible)
 })
@@ -325,7 +327,7 @@ return (_ctx, _cache) => {
           ]))
         : _createCommentVNode("v-if", true)
     ]),
-    _cache[13] || (_cache[13] = _createStaticVNode("<details class=\"guide\"><summary>How to read this table</summary><p><b>Online</b> means a recent heartbeat contained a valid local snapshot. <b>Unavailable</b> means the reporter checked in with a socket error. A heartbeat becomes <b>stale</b> after three minutes. </p><p> Network columns show observed unsigned wraps / unwraps. An asterisk marks a partial count. A dash means the measurement is unavailable. Hover over a pair for its observation times. </p><p> Response time measures a successful snapshot read on the operator’s host. Last checked is the receiver’s heartbeat receipt time in UTC. This page refreshes every 30 seconds. </p></details><p class=\"guide\"><a href=\"/api/docs\">Status API guide</a></p>", 2))
+    _cache[13] || (_cache[13] = _createStaticVNode("<details class=\"guide\"><summary>How to read this table</summary><p><b>Online</b> means a recent heartbeat contained a valid local snapshot. <b>Unavailable</b> means the reporter checked in with a socket error. A heartbeat becomes <b>stale</b> after three minutes. </p><p> Network columns show observed unsigned wraps / unwraps. An asterisk marks a partial count. A dash means the measurement is unavailable. Hover over a pair for its observation times. </p><p> Response time measures a successful snapshot read on the operator’s host. Last checked is the receiver’s heartbeat receipt time in UTC. This page refreshes every 30 seconds. </p><p>Read the current snapshot in <a href=\"/index.md\">Markdown</a> or <a href=\"/api/status\">JSON</a>.</p></details><p class=\"guide\"><a href=\"/api/docs\">Status API guide</a></p>", 2))
   ], 64 /* STABLE_FRAGMENT */))
 }
 }

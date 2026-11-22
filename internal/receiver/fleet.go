@@ -51,12 +51,13 @@ func (n node) state(now time.Time) string {
 }
 
 type fleet struct {
-	mu        sync.Mutex
-	dir       string
-	nodes     []node
-	revision  uint64
-	collector *collector.Collector
-	ca        *authority
+	mu          sync.Mutex
+	dir         string
+	nodes       []node
+	revision    uint64
+	publicCache statusCache
+	collector   *collector.Collector
+	ca          *authority
 }
 
 func registryFor(nodes []node) (*collector.Registry, error) {

@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
-const data = ref(null)
+const props = defineProps({ initial: Object })
+const data = ref(props.initial ?? null)
 const failure = ref(false)
 const loading = ref(false)
 const query = ref('')
@@ -38,7 +39,7 @@ function refreshVisible() {
   if (!document.hidden) refresh()
 }
 onMounted(() => {
-  refresh()
+  if (!data.value) refresh()
   timer = setInterval(refreshVisible, 30000)
   document.addEventListener('visibilitychange', refreshVisible)
 })
@@ -240,6 +241,7 @@ function queueTitle(pair) {
       Response time measures a successful snapshot read on the operator’s host. Last checked is the
       receiver’s heartbeat receipt time in UTC. This page refreshes every 30 seconds.
     </p>
+    <p>Read the current snapshot in <a href="/index.md">Markdown</a> or <a href="/api/status">JSON</a>.</p>
   </details>
   <p class="guide"><a href="/api/docs">Status API guide</a></p>
 </template>
