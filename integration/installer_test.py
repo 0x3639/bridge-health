@@ -207,15 +207,34 @@ class InstallerTest(unittest.TestCase):
         delivered = SimpleNamespace(stdout=b"heartbeat delivered (local read ok)", returncode=0)
         socket_failure = SimpleNamespace(stdout=b"heartbeat delivered (local read unreachable)", returncode=0)
         journal = Mock(side_effect=[empty, ready, socket_failure, delivered])
+        reporter = SimpleNamespace(stdout=f"ActiveState=active\nInvocationID={invocation}")
         with patch.object(installer.subprocess, "run", journal), \
              patch.object(installer.shutil, "which", return_value=None), \
              patch.object(installer, "signer_instance", return_value=(None, None, invocation, 42)), \
-             patch.object(installer, "run", return_value=SimpleNamespace(stdout=invocation)), \
+             patch.object(installer, "run", return_value=reporter), \
              patch.object(installer.time, "sleep") as sleep, patch("builtins.print"):
             installer.wait_for_startup(invocation, 42, 55000)
             installer.verify_delivery()
         self.assertEqual(sleep.call_count, 2)
         for call in journal.call_args_list:
+            self.assertIn("_SYSTEMD_INVOCATION_ID=" + invocation, call[0][0])
+
+    def test_delivery_follows_reporter_restart(self):
+        old, new = "a" * 32, "b" * 32
+        # The old reporter logs an acknowledgement, then exits before the
+        # installer confirms it. Its invocation ID lingers during the restart.
+        states = [("active", old), ("activating", old), ("activating", old),
+                  ("active", new), ("active", new)]
+        properties = [SimpleNamespace(stdout=f"ActiveState={state}\nInvocationID={invocation}")
+                      for state, invocation in states]
+        delivered = SimpleNamespace(stdout=b"heartbeat delivered (local read ok)", returncode=0)
+        with patch.object(installer, "run", side_effect=properties), \
+             patch.object(installer.subprocess, "run", return_value=delivered) as journal, \
+             patch.object(installer.time, "sleep") as sleep:
+            installer.verify_delivery()
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(journal.call_count, 2)
+        for call, invocation in zip(journal.call_args_list, [old, new]):
             self.assertIn("_SYSTEMD_INVOCATION_ID=" + invocation, call[0][0])
 
 

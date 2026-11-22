@@ -270,20 +270,29 @@ def enable_snapshot(gid):
         run("systemctl", "start", "orchestrator.service")
 
 
+def running_reporter_invocation():
+    output = run("systemctl", "show", SERVICE, "-p", "ActiveState", "-p", "InvocationID",
+                 stdout=subprocess.PIPE, text=True).stdout
+    fields = dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
+    invocation = fields.get("InvocationID", "")
+    if fields.get("ActiveState") == "active" and re.fullmatch("[0-9a-fA-F]{32}", invocation):
+        return invocation
+    return None
+
+
 def verify_delivery():
-    invocation = run("systemctl", "show", SERVICE, "-p", "InvocationID", "--value",
-                     stdout=subprocess.PIPE, text=True).stdout.strip()
-    if not re.fullmatch("[0-9a-fA-F]{32}", invocation):
-        raise ValueError("Cannot identify the running reporter to verify its first heartbeat.")
     # The reporter emits this acknowledgement only after validating the
     # socket response as its own user and receiving a successful delivery.
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
-        entry = subprocess.run(["journalctl", "-q", "--no-pager", "-n", "1", "-o", "cat",
-                                "_SYSTEMD_INVOCATION_ID=" + invocation,
-                                "--grep=heartbeat delivered .*local read ok"], stdout=subprocess.PIPE)
-        if entry.returncode == 0 and b"heartbeat delivered (local read ok)" in entry.stdout:
-            return
+        invocation = running_reporter_invocation()
+        if invocation:
+            entry = subprocess.run(["journalctl", "-q", "--no-pager", "-n", "1", "-o", "cat",
+                                    "_SYSTEMD_INVOCATION_ID=" + invocation,
+                                    "--grep=heartbeat delivered .*local read ok"], stdout=subprocess.PIPE)
+            if (entry.returncode == 0 and b"heartbeat delivered (local read ok)" in entry.stdout
+                    and running_reporter_invocation() == invocation):
+                return
         time.sleep(2)
     raise ValueError("Reporter started but no successful snapshot heartbeat was confirmed. "
                      "Check journalctl -u bridge-health-reporter -n 20.")
