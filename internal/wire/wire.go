@@ -16,6 +16,9 @@ import (
 
 const MaxBody = 64 << 10
 const MaxSequence = 1<<53 - 1
+
+// LocalReadHeader is optional transport metadata, measured by the reporter in microseconds.
+const LocalReadHeader = "Bridge-Health-Read-Micros"
 const Path = "/v1/heartbeats"
 const MaxAge = 2 * time.Minute
 const FutureSkew = 30 * time.Second

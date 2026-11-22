@@ -94,7 +94,7 @@ func TestConcurrentSequenceAndEnrollment(t *testing.T) {
 		wg.Add(1)
 		go func(seq uint64) {
 			defer wg.Done()
-			code, err := s.accept(fp, e, wire.Report{Stream: id, Sequence: seq, SentAt: now}, "digest", now)
+			code, err := s.accept(fp, e, wire.Report{Stream: id, Sequence: seq, SentAt: now}, "digest", now, nil)
 			if err != nil || code != 204 && code != 409 {
 				t.Errorf("accept: %d %v", code, err)
 			}
@@ -106,7 +106,7 @@ func TestConcurrentSequenceAndEnrollment(t *testing.T) {
 		t.Fatal(prev, err)
 	}
 	s.Reload(&Registry{})
-	if code, _ := s.accept(fp, e, wire.Report{Stream: id, Sequence: 21, SentAt: now}, "digest", now); code != 403 {
+	if code, _ := s.accept(fp, e, wire.Report{Stream: id, Sequence: 21, SentAt: now}, "digest", now, nil); code != 403 {
 		t.Fatal("revocation during request", code)
 	}
 }

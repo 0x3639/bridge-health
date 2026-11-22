@@ -4,22 +4,42 @@ One service runs on each operator host and one runs on the monitoring host. The 
 
 ## Deploy the managed receiver on Coolify
 
-The managed receiver includes the collector, a password-protected dashboard, a certificate authority and installers for Linux amd64 and arm64. It builds both reporter binaries from the same checkout as the receiver.
+The managed receiver includes the collector, a public Vue status page, password-protected administration, a certificate authority and installers for Linux amd64 and arm64. It builds both reporter binaries from the same checkout as the receiver.
 
-1. Point the DNS A record for `bridgehealth.0x3639.com` at the Coolify server. Add an AAAA record only if IPv6 reaches the same server. With Cloudflare, use **DNS only** so operators can reach the receiver's mutual TLS listener directly.
+1. Point the DNS A records for `bridgestatus.0x3639.com` and `bridgehealth.0x3639.com` at the Coolify server. Add an AAAA record only if IPv6 reaches the same server. With Cloudflare, use **DNS only** so operators can reach the receiver's mutual TLS listener directly.
 2. Create a Git-based **Docker Compose** application in Coolify using the branch containing these changes. Set **Base Directory** to `/` and **Docker Compose Location** to `/compose.coolify.yaml`.
 3. In the application's runtime environment, set `ADMIN_PASSWORD` to a random password of at least 16 characters. For example, generate one with `openssl rand -hex 24`. The username defaults to `admin`. Set `ADMIN_USERNAME` to change it.
-4. Assign the HTTPS domain `bridgehealth.0x3639.com` to the **receiver** service, targeting container port **8080**. In Coolify versions with a single domain field, enter `https://bridgehealth.0x3639.com:8080`. Allow TCP 80 and 443 to the Coolify proxy and TCP **8443** directly to the receiver. Keep port 8080 internal.
-5. Deploy one replica. Open **https://bridgehealth.0x3639.com** and sign in. A request to `https://bridgehealth.0x3639.com/healthz` returns HTTP 204 when the web service is available.
+4. On the existing **receiver** service, assign both HTTPS domains to container port **8080**. In the Domains field enter `https://bridgehealth.0x3639.com:8080,https://bridgestatus.0x3639.com:8080`. Keep the existing receiver volume and resource when upgrading. Allow TCP 80 and 443 to the Coolify proxy and TCP **8443** directly to the receiver. Keep port 8080 internal.
+5. Deploy one replica. Open [Bridge status](https://bridgestatus.0x3639.com/) for the public table. To sign in, go directly to [receiver administration](https://bridgestatus.0x3639.com/admin) and use the existing Coolify credentials. A request to `https://bridgehealth.0x3639.com/healthz` returns HTTP 204 when the web service is available.
 
 | Connection | Destination | Authentication |
 | --- | --- | --- |
-| Administrator, installer and first enrollment | `https://bridgehealth.0x3639.com` | Coolify serves public HTTPS. Admin forms require a login session. Enrollment requires the private invitation and a signed CSR. |
+| Visitors and administrators | `https://bridgestatus.0x3639.com` | The root and `/api/status` are public. Management requires signing in at `/admin`. |
+| Installer and first enrollment | `https://bridgehealth.0x3639.com` | Coolify serves public HTTPS. Admin forms require a login session. Enrollment requires the private invitation and a signed CSR. |
 | Enrolled reporter | `https://bridgehealth.0x3639.com:8443/v1/heartbeats` | The receiver terminates mutual TLS and checks the active certificate fingerprint for the assigned stream on every request. |
 
 The Compose volume `receiver-data` holds the private CA, invitations, enrollments and heartbeat history under `/data/receiver`. Preserve it across redeployments. Back up the entire volume together while the receiver is stopped, protect the backup like a signing key, and keep the volume attached to only one receiver. Restarting the container ends browser sessions. To change the administrator password, update it in Coolify and redeploy.
 
 [Coolify Docker Compose setup](https://coolify.io/docs/applications/builds/docker-compose) · [Coolify domain configuration](https://coolify.io/docs/core/networking/domains)
+
+## Public dashboard
+
+The public page lists enrolled, unrevoked reporters under their assigned pillar names. It refreshes every 30 seconds. A fresh, successful socket read appears as **Online**. A fresh heartbeat carrying a local read failure appears as **Unavailable**, with the reason. **Stale** means three minutes have elapsed since receipt. **Awaiting report** marks an enrolled node with no receipt. Each public update projects the latest report. Raw snapshots, stream identifiers, invitation history and certificates stay in administration.
+
+- **State** shows the orchestrator bridge state when known, with the process phase as a fallback.
+- **BNB, ETH and Supernova** show observed unsigned wraps / unwraps for EVM chain IDs 56, 1 and 73405. A partial count has an asterisk. Missing measurements display a dash. Hover over a pair for each observation's quality and time.
+- **Producer** defaults to the address for an exact, case-insensitive name match in the [explorer’s pillar directory](https://github.com/0x3639/explorer.zenon.info/blob/0abfad6f822b28f285d7584153f28b4e77686976/src/lib/constants.ts). Other names start blank. In **Overview**, open a node, fill in **Public listing → Producer address** and save. Clearing it removes the explorer links.
+- **Resp. time** is the reporter’s elapsed time to read and validate the local snapshot. Reporters built before this release omit that measurement. **Last checked** is the receiver's UTC receipt time.
+
+`STATUS_URL` configures the additional HTTPS origin allowed for administration. `PUBLIC_URL` remains the installer and heartbeat hostname. The included Compose file configures both. When running the binary directly, `STATUS_URL` defaults to `PUBLIC_URL`.
+
+The dashboard and admin screens use Vue 3 and the [Zenon design system](https://github.com/digitalSloth/zenon-design-system). The Go binary embeds the compiled UI, runtime and fonts. Coolify builds from the checked-in assets with the existing Dockerfile. After editing the Vue components or styles, rebuild and include the updated assets:
+
+```sh
+cd frontend
+npm ci
+npm run build
+```
 
 ## Invite and install a node
 

@@ -18,16 +18,24 @@ import (
 )
 
 type Config struct {
-	State, Downloads, Origin, User, Password, WebListen, HeartbeatListen string
-	HeartbeatPort                                                        int
+	State, Downloads, Origin, StatusOrigin, User, Password, WebListen, HeartbeatListen string
+	HeartbeatPort                                                                      int
 }
 
 var hostname = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]*$`)
 
+func validOrigin(origin string) (*url.URL, bool) {
+	u, err := url.Parse(origin)
+	return u, err == nil && u.Scheme == "https" && hostname.MatchString(u.Hostname()) && u.User == nil && origin == "https://"+u.Host
+}
+
 func Run(ctx context.Context, c Config) error {
-	u, err := url.Parse(c.Origin)
-	if err != nil || u.Scheme != "https" || !hostname.MatchString(u.Hostname()) || u.User != nil || c.Origin != "https://"+u.Host {
+	u, ok := validOrigin(c.Origin)
+	if !ok {
 		return errors.New("PUBLIC_URL must be an HTTPS origin with a DNS hostname and no trailing slash")
+	}
+	if _, ok := validOrigin(c.StatusOrigin); !ok {
+		return errors.New("STATUS_URL must be an HTTPS origin with a DNS hostname and no trailing slash")
 	}
 	if c.User == "" || len(c.Password) < 16 {
 		return errors.New("set ADMIN_USERNAME and an ADMIN_PASSWORD of at least 16 characters")
@@ -49,7 +57,7 @@ func Run(ctx context.Context, c Config) error {
 	if err != nil {
 		return err
 	}
-	ui, err := newWeb(f, c.Origin, endpoint, c.Downloads, c.User, c.Password)
+	ui, err := newWeb(f, c.Origin, c.StatusOrigin, endpoint, c.Downloads, c.User, c.Password)
 	if err != nil {
 		return err
 	}

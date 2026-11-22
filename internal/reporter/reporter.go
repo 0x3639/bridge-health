@@ -113,7 +113,9 @@ func (r *Reporter) read(ctx context.Context) (json.RawMessage, string) {
 // Once reserves a durable sequence before the first POST. A transient failure
 // retries the exact bytes once. The next tick always takes a fresh observation.
 func (r *Reporter) Once(ctx context.Context) (string, error) {
+	started := time.Now()
 	snapshot, outcome := r.read(ctx)
+	readTime := time.Since(started)
 	if ctx.Err() != nil {
 		return outcome, ctx.Err()
 	}
@@ -149,7 +151,10 @@ func (r *Reporter) Once(ctx context.Context) (string, error) {
 		return outcome, err
 	}
 	r.cursor = next
-	retry, err := r.post(ctx, body)
+	if outcome != "ok" {
+		readTime = 0
+	}
+	retry, err := r.post(ctx, body, readTime)
 	if !retry {
 		return outcome, err
 	}
@@ -166,16 +171,19 @@ func (r *Reporter) Once(ctx context.Context) (string, error) {
 	case <-ctx.Done():
 		return outcome, ctx.Err()
 	case <-timer.C:
-		_, err = r.post(ctx, body)
+		_, err = r.post(ctx, body, readTime)
 		return outcome, err
 	}
 }
-func (r *Reporter) post(ctx context.Context, body []byte) (bool, error) {
+func (r *Reporter) post(ctx context.Context, body []byte, readTime time.Duration) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, "POST", r.endpoint, bytes.NewReader(body))
 	if err != nil {
 		return false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if readTime > 0 {
+		req.Header.Set(wire.LocalReadHeader, strconv.FormatInt(readTime.Microseconds(), 10))
+	}
 	resp, err := r.remote.Do(req)
 	if err != nil {
 		return true, err
