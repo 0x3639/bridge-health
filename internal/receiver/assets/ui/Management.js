@@ -187,7 +187,7 @@ return (_ctx, _cache) => {
       : (__props.page.View === 'install')
         ? (_openBlock(), _createElementBlock("section", _hoisted_7, [
             _cache[7] || (_cache[7] = _createElementVNode("h1", null, "Connect your node", -1 /* CACHED */)),
-            _cache[8] || (_cache[8] = _createElementVNode("p", null, " Run the installer on the Linux host that runs your orchestrator. It creates a private key on that host and starts the reporter service. ", -1 /* CACHED */)),
+            _cache[8] || (_cache[8] = _createElementVNode("p", null, " Run the installer on the Linux host that runs your orchestrator. If the standard health socket is missing, setup waits for startup sync and restarts the orchestrator once to enable it. The reporter then sends its first health snapshot. ", -1 /* CACHED */)),
             (installCommand.value)
               ? (_openBlock(), _createElementBlock("div", _hoisted_8, [
                   _createElementVNode("label", null, [
