@@ -5,11 +5,13 @@ import json
 import os
 from pathlib import Path
 import ssl
+import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from types import ModuleType, SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 SOURCE = Path(__file__).resolve().parents[1] / "internal/receiver/assets/install.py"
 installer = ModuleType("bridge_installer")
@@ -86,6 +88,154 @@ class InstallerTest(unittest.TestCase):
                 with patch.object(installer, "CHECKSUMS", {"arm64": "0" * 64}):
                     with self.assertRaisesRegex(ValueError, "SHA-256"):
                         install(token)
+
+                # The invitation page passes no socket arguments. Exercise first
+                # setup and a later run using the socket already created.
+                args.socket = None
+                socket_path = root / "health.sock"
+                socket_gid = gid + 1
+                real_stat = os.stat
+                def socket_stat(path, *a, **kw):
+                    info = real_stat(path, *a, **kw)
+                    if Path(path) == socket_path:
+                        return SimpleNamespace(st_mode=stat.S_IFSOCK | 0o660, st_gid=socket_gid)
+                    return info
+                with patch.object(os, "stat", socket_stat), \
+                     patch.object(installer, "DEFAULT_SOCKET", str(socket_path)), \
+                     patch.object(installer, "enable_snapshot", side_effect=lambda _: socket_path.touch()) as enable, \
+                     patch.object(installer, "verify_delivery") as verify:
+                    install(token)
+                    install(token)
+                    enable.assert_called_once_with(gid)
+                    self.assertEqual(verify.call_count, 2)
+
+                    def enroll_with_socket(*_):
+                        socket_path.touch()
+                        return origin + ":8443/v1/heartbeats"
+
+                    override_gid = socket_gid + 1
+                    with patch.object(installer, "credentials", side_effect=enroll_with_socket), \
+                         patch.object(installer.grp, "getgrnam", return_value=SimpleNamespace(gr_gid=override_gid)):
+                        for group, expected in [(None, socket_gid), ("custom-health", override_gid)]:
+                            with self.subTest(socket_group=group):
+                                socket_path.unlink()
+                                args.socket_group = group
+                                install(token)
+                                self.assertIn(f"SupplementaryGroups={expected}", unit.read_text().splitlines())
+                                enable.assert_called_once_with(gid)
+
+    def test_exact_backup_and_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "config.json"
+            original = b'{"HealthConfig":{"Port":55000},"large":123456789123456789,"secret":"unchanged"}'
+            cfg.write_bytes(original)
+            edit = [sys.executable, "-I", "-c", installer.SIGNER_CONFIG, str(cfg), installer.DEFAULT_SOCKET]
+            self.assertEqual(subprocess.check_output(edit + ["check"]).strip(), b"55000")
+            subprocess.run(edit + ["write"], check=True)
+            subprocess.run(edit + ["write"], check=True)
+            restored = json.loads(cfg.read_bytes())
+            self.assertEqual(restored["HealthConfig"].pop("SnapshotSocket"), installer.DEFAULT_SOCKET)
+            self.assertEqual(restored, json.loads(original))
+            backup, = Path(tmp).glob("config.before-health.*")
+            self.assertEqual(backup.read_bytes(), original)
+            for f in (cfg, backup):
+                self.assertEqual(f.stat().st_mode & 0o777, 0o600)
+            other = edit[:]
+            other[-1] = "/run/custom.sock"
+            self.assertNotEqual(subprocess.run(other + ["write"], capture_output=True).returncode, 0)
+            self.assertEqual(json.loads(cfg.read_text())["HealthConfig"]["SnapshotSocket"], installer.DEFAULT_SOCKET)
+
+    def test_shutdown_config_is_read_after_stop_and_restart_even_on_failure(self):
+        account = SimpleNamespace(pw_name="signer")
+        for failure in (None, "write", "stop"):
+            steps = []
+            def command(*args, **kw):
+                if args[0] == "runuser":
+                    self.assertEqual(args[2], "signer")
+                    step = args[-1]
+                else:
+                    step = args[1]
+                steps.append(step)
+                if step == failure:
+                    raise subprocess.CalledProcessError(1, args)
+                return SimpleNamespace(stdout=b"55000")
+            with self.subTest(failure=failure), \
+                 patch.object(installer, "signer_instance", return_value=(account, "/cfg", "active", 42)), \
+                 patch.object(installer, "prepare_socket_dir", side_effect=lambda *_: steps.append("directory")), \
+                 patch.object(installer, "wait_for_startup", side_effect=lambda *_: steps.append("ready")), \
+                 patch.object(installer, "run", command), patch("builtins.print"):
+                if failure:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        installer.enable_snapshot(99)
+                else:
+                    installer.enable_snapshot(99)
+                after_stop = ["start"] if failure == "stop" else ["write", "start"]
+                self.assertEqual(steps, ["check", "directory", "ready", "stop"] + after_stop)
+
+    def test_tmpfiles_rule_recreates_private_runtime_dir(self):
+        account = SimpleNamespace(pw_uid=os.getuid(), pw_name="signer")
+        gid = os.getgid()
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "health"
+            rule = Path(tmp) / "health.conf"
+            lstat = Path.lstat
+            def linux_stat(path):
+                info = lstat(path)
+                if path == directory and sys.platform != "linux":
+                    # macOS temp volumes clear setgid on directories.
+                    return SimpleNamespace(st_mode=info.st_mode | stat.S_ISGID,
+                                           st_uid=info.st_uid, st_gid=info.st_gid)
+                return info
+            def tmpfiles(*args):
+                self.assertEqual(args, ("systemd-tmpfiles", "--create", str(rule)))
+                self.assertEqual(rule.read_text(), f"d {directory} 2750 {account.pw_uid} {gid} -\n")
+                directory.mkdir(exist_ok=True)
+                os.chown(directory, -1, gid)
+                directory.chmod(0o2750)
+            with patch.object(installer, "DEFAULT_SOCKET", str(directory / "health.sock")), \
+                 patch.object(installer, "TMPFILES", rule), patch.object(installer, "run", tmpfiles), \
+                 patch.object(os, "fchown"), patch.object(Path, "lstat", linux_stat):
+                installer.prepare_socket_dir(account, gid)
+                directory.rmdir()
+                installer.prepare_socket_dir(account, gid)
+                self.assertEqual(directory.lstat().st_mode & 0o7777, 0o2750)
+
+    def test_waits_for_current_invocation_and_for_delivery(self):
+        invocation = "f" * 32
+        empty = SimpleNamespace(stdout=b"", returncode=1)
+        ready = SimpleNamespace(stdout=b"Starting health rpc server on localhost", returncode=0)
+        delivered = SimpleNamespace(stdout=b"heartbeat delivered (local read ok)", returncode=0)
+        socket_failure = SimpleNamespace(stdout=b"heartbeat delivered (local read unreachable)", returncode=0)
+        journal = Mock(side_effect=[empty, ready, socket_failure, delivered])
+        reporter = SimpleNamespace(stdout=f"ActiveState=active\nInvocationID={invocation}")
+        with patch.object(installer.subprocess, "run", journal), \
+             patch.object(installer.shutil, "which", return_value=None), \
+             patch.object(installer, "signer_instance", return_value=(None, None, invocation, 42)), \
+             patch.object(installer, "run", return_value=reporter), \
+             patch.object(installer.time, "sleep") as sleep, patch("builtins.print"):
+            installer.wait_for_startup(invocation, 42, 55000)
+            installer.verify_delivery()
+        self.assertEqual(sleep.call_count, 2)
+        for call in journal.call_args_list:
+            self.assertIn("_SYSTEMD_INVOCATION_ID=" + invocation, call[0][0])
+
+    def test_delivery_follows_reporter_restart(self):
+        old, new = "a" * 32, "b" * 32
+        # The old reporter logs an acknowledgement, then exits before the
+        # installer confirms it. Its invocation ID lingers during the restart.
+        states = [("active", old), ("activating", old), ("activating", old),
+                  ("active", new), ("active", new)]
+        properties = [SimpleNamespace(stdout=f"ActiveState={state}\nInvocationID={invocation}")
+                      for state, invocation in states]
+        delivered = SimpleNamespace(stdout=b"heartbeat delivered (local read ok)", returncode=0)
+        with patch.object(installer, "run", side_effect=properties), \
+             patch.object(installer.subprocess, "run", return_value=delivered) as journal, \
+             patch.object(installer.time, "sleep") as sleep:
+            installer.verify_delivery()
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(journal.call_count, 2)
+        for call, invocation in zip(journal.call_args_list, [old, new]):
+            self.assertIn("_SYSTEMD_INVOCATION_ID=" + invocation, call[0][0])
 
 
 if __name__ == "__main__":

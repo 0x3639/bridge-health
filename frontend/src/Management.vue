@@ -65,8 +65,9 @@ function confirmRevoke(event, node) {
   <section v-else-if="page.View === 'install'" class="panel access">
     <h1>Connect your node</h1>
     <p>
-      Run the installer on the Linux host that runs your orchestrator. It creates a private key on
-      that host and starts the reporter service.
+      Run the installer on the Linux host that runs your orchestrator. If the standard health socket
+      is missing, setup waits for startup sync and restarts the orchestrator once to enable it. The reporter
+      then sends its first health snapshot.
     </p>
     <div v-if="installCommand" class="stack">
       <label

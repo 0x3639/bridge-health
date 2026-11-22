@@ -75,7 +75,11 @@ Missing, invalid, expired and revoked tokens return HTTP 401. An unknown stream 
 
 ### Socket selection and private installation
 
-Configure the orchestrator's `HealthConfig.SnapshotSocket` at `/run/orchestrator-health/health.sock` or supply its actual absolute path. The reporter needs directory traversal and read/write access to that Unix socket. Use a dedicated health socket group. The installer detects the existing socket's non-root GID and adds it to the service. If the socket will appear later, pass its dedicated group with `--socket-group`. Keep the socket outside private home or temporary directories used by systemd sandboxing.
+The invitation command configures the standard socket on an operator host running a snapshot-capable `orchestrator.service`. When `/run/orchestrator-health/health.sock` is missing, the installer discovers the service user and config, provisions a private setgid directory with systemd-tmpfiles for this boot and future boots, and waits for startup sync to finish. It checks the signer's own legacy health listener when `ss` is installed, or its current systemd invocation's startup journal. It stops the service once, reads the final saved config, backs up the original to an owner-only `config.before-health.*` beside it, sets `HealthConfig.SnapshotSocket`, and starts the orchestrator. Existing socket installations skip this service interruption. Run the command in a persistent terminal session for a long initial sync.
+
+The installer verifies the new reporter's first acknowledged heartbeat with a valid snapshot. If the service is running but verification times out, use `journalctl -u bridge-health-reporter -n 20` to see its delivery or local read result.
+
+For a custom service, container, or externally managed socket, pass `--socket /absolute/path` explicitly. This retains the reporter-only install flow. The reporter needs directory traversal and read/write access to that socket. The installer detects an existing socket's non-root GID, or accepts its dedicated group with `--socket-group`. Use a socket outside private home or temporary directories used by systemd sandboxing.
 
 The copied command contains the invitation and may be saved in shell history. For a hidden invitation prompt or a custom socket, download the installer on the node and run it directly. Paste the complete private URL when prompted.
 
