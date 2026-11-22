@@ -34,15 +34,16 @@ type savedToken struct {
 }
 
 type apiTokens struct {
-	mu   sync.Mutex
-	path string
-	byID map[string]savedToken
+	mu      sync.Mutex
+	path    string
+	byID    map[string]savedToken
+	syncDir func(string) error
 }
 
 func tokenLimiter() *rate.Limiter { return rate.NewLimiter(1, 10) }
 
 func openAPITokens(dir string) (*apiTokens, error) {
-	s := &apiTokens{path: filepath.Join(dir, "api-tokens.json"), byID: make(map[string]savedToken)}
+	s := &apiTokens{path: filepath.Join(dir, "api-tokens.json"), byID: make(map[string]savedToken), syncDir: localstate.SyncDirectory}
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
@@ -67,11 +68,13 @@ func openAPITokens(dir string) (*apiTokens, error) {
 }
 
 func (s *apiTokens) save(next map[string]savedToken) error {
-	if err := localstate.Write(s.path, next); err != nil {
+	if err := localstate.Replace(s.path, next); err != nil {
 		return err
 	}
+	// The rename has published next. Keep authorization and later writes in
+	// step with the visible registry even if its directory sync fails.
 	s.byID = next
-	return nil
+	return s.syncDir(filepath.Dir(s.path))
 }
 
 func (s *apiTokens) issue(name string, lifetime time.Duration, now time.Time) (string, error) {

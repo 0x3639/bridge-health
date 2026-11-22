@@ -156,7 +156,7 @@ function queueTitle(pair) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="node in filtered" :key="node.name">
+          <tr v-for="node in filtered" :key="node.id">
             <th scope="row" class="pillar">
               <a
                 v-if="node.producer"

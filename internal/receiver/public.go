@@ -16,6 +16,7 @@ const reportFreshness = 3 * time.Minute
 
 // Only these fields can leave the receiver through the public endpoint.
 type publicNode struct {
+	ID         string               `json:"id"`
 	Name       string               `json:"name"`
 	Producer   string               `json:"producer,omitempty"`
 	Status     string               `json:"status"`
@@ -62,7 +63,10 @@ func reportHealth(s collector.Status) (status, reason string) {
 
 func project(n node, s collector.Status) (publicNode, error) {
 	status, reason := reportHealth(s)
-	p := publicNode{Name: redactIPText(n.Name), Producer: n.publicProducer(), Status: status, Error: reason}
+	// Derive the public row key from the random enrollment UUID. Display
+	// names can collide after redaction, and stream IDs are private.
+	p := publicNode{ID: digest([]byte("public-node:" + n.ID)), Name: redactIPText(n.Name),
+		Producer: n.publicProducer(), Status: status, Error: reason}
 	last := s.Latest
 	if last != nil {
 		p.Checked = &last.ReceivedAt

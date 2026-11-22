@@ -237,7 +237,7 @@ return (_ctx, _cache) => {
           _createElementVNode("tbody", null, [
             (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(filtered.value, (node) => {
               return (_openBlock(), _createElementBlock("tr", {
-                key: node.name
+                key: node.id
               }, [
                 _createElementVNode("th", _hoisted_11, [
                   (node.producer)

@@ -34,7 +34,17 @@ func Open(dir string) (*os.File, error) {
 	}
 	return f, nil
 }
+
 func Write(path string, value any) error {
+	if err := Replace(path, value); err != nil {
+		return err
+	}
+	return SyncDirectory(filepath.Dir(path))
+}
+
+// Replace syncs the new file and renames it into place. On success the new
+// contents are visible. The caller must sync the parent directory for durability.
+func Replace(path string, value any) error {
 	dir := filepath.Dir(path)
 	f, err := os.CreateTemp(dir, ".pending-")
 	if err != nil {
@@ -51,10 +61,7 @@ func Write(path string, value any) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if err = os.Rename(f.Name(), path); err != nil {
-		return err
-	}
-	return SyncDirectory(dir)
+	return os.Rename(f.Name(), path)
 }
 
 func SyncDirectory(dir string) error {

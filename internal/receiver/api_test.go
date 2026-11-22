@@ -2,6 +2,7 @@ package receiver
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -270,5 +271,54 @@ func TestPublicAPIGuide(t *testing.T) {
 	}
 	if strings.Contains(body, "<script") {
 		t.Fatal("guide should render without loading an app or embedding session data")
+	}
+}
+
+func TestAPITokenRevokeWriteFailures(t *testing.T) {
+	dir := t.TempDir()
+	s, err := openAPITokens(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	raw, err := s.issue("monitor", time.Hour, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := s.list()[0].ID
+
+	// A rename onto a directory fails before the live file can be replaced.
+	path := s.path
+	s.path = dir
+	err = s.revoke(id)
+	s.path = path
+	if err == nil || s.authorize(raw, now) != http.StatusOK {
+		t.Fatal("failed rename changed live authorization")
+	}
+	reopened, err := openAPITokens(dir)
+	if err != nil || reopened.authorize(raw, now) != http.StatusOK {
+		t.Fatal("failed rename changed persisted authorization", err)
+	}
+
+	// Use the real file replacement but fail the following directory sync.
+	syncErr := errors.New("directory sync failed")
+	s.syncDir = func(string) error { return syncErr }
+	if err := s.revoke(id); !errors.Is(err, syncErr) {
+		t.Fatalf("revoke returned %v, want directory sync error", err)
+	}
+	if s.authorize(raw, now) != http.StatusUnauthorized {
+		t.Fatal("revoked token still authorized after rename")
+	}
+	s.syncDir = localstate.SyncDirectory
+	replacement, err := s.issue("replacement", time.Hour, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err = openAPITokens(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.authorize(raw, now) != http.StatusUnauthorized || reopened.authorize(replacement, now) != http.StatusOK {
+		t.Fatal("later write restored revoked access or lost the replacement")
 	}
 }

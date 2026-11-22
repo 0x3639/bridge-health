@@ -51,3 +51,27 @@ func TestDirectoryProducerOverrides(t *testing.T) {
 		t.Fatal("unknown pillar assigned a producer")
 	}
 }
+
+func TestPublicRowIDsSurviveNameRedaction(t *testing.T) {
+	a := node{ID: "6cf71aa0-1814-42d1-bea8-156e291e2f99", Name: "pillar-192.0.2.7"}
+	b := node{ID: "524c88ca-02be-499f-a5ce-27c8881fc694", Name: "pillar-192.0.2.8"}
+	row := func(n node) publicNode {
+		t.Helper()
+		p, err := project(n, collector.Status{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	first, second := row(a), row(b)
+	if first.Name != "pillar-[redacted]" || first.Name != second.Name {
+		t.Fatal("expected identical redacted display names")
+	}
+	if first.ID == "" || second.ID == "" || first.ID == second.ID || first.ID == a.ID || second.ID == b.ID {
+		t.Fatal("expected distinct, opaque public row IDs")
+	}
+	a.Name = "renamed pillar"
+	if row(a).ID != first.ID {
+		t.Fatal("display name change replaced the public row ID")
+	}
+}
