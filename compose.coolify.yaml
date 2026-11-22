@@ -1,0 +1,23 @@
+services:
+  receiver:
+    build:
+      context: .
+      target: receiver
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: https://bridgehealth.0x3639.com
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set a strong receiver admin password in Coolify}
+    expose:
+      - "8080"
+    ports:
+      - "8443:8443"
+    volumes:
+      - receiver-data:/data
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  receiver-data:

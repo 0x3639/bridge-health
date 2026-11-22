@@ -215,23 +215,32 @@ type Status struct {
 func Statuses(dir string, reg *Registry, stale time.Duration, now time.Time) ([]Status, error) {
 	out := make([]Status, 0, len(reg.Entries))
 	for _, e := range reg.Entries {
-		item, err := readLatest(dir, e.Stream)
+		row, err := StreamStatus(dir, e, stale, now)
 		if err != nil {
 			return nil, err
-		}
-		row := Status{Node: e.Node, Stream: e.Stream, Delivery: "never", DisplayName: e.DisplayName, ExpectedNetworks: e.ExpectedNetworks}
-		if item != nil {
-			if item.Node != e.Node {
-				return nil, errors.New("saved stream belongs to a different node")
-			}
-			row.Delivery = "fresh"
-			row.Latest = &item.Stored
-			row.HistoricalSuccess = item.HistoricalSuccess
-			if now.Sub(item.ReceivedAt) >= stale {
-				row.Delivery = "stale"
-			}
 		}
 		out = append(out, row)
 	}
 	return out, nil
+}
+
+// StreamStatus reads the latest durable heartbeat, including for a retired stream.
+func StreamStatus(dir string, e Enrollment, stale time.Duration, now time.Time) (Status, error) {
+	item, err := readLatest(dir, e.Stream)
+	if err != nil {
+		return Status{}, err
+	}
+	row := Status{Node: e.Node, Stream: e.Stream, Delivery: "never", DisplayName: e.DisplayName, ExpectedNetworks: e.ExpectedNetworks}
+	if item != nil {
+		if item.Node != e.Node {
+			return Status{}, errors.New("saved stream belongs to a different node")
+		}
+		row.Delivery = "fresh"
+		row.Latest = &item.Stored
+		row.HistoricalSuccess = item.HistoricalSuccess
+		if now.Sub(item.ReceivedAt) >= stale {
+			row.Delivery = "stale"
+		}
+	}
+	return row, nil
 }

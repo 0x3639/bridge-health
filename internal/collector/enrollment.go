@@ -32,6 +32,11 @@ func Load(path string) (*Registry, error) {
 	if err = wire.StrictJSON(data, &reg); err != nil {
 		return nil, err
 	}
+	return NewRegistry(reg.Entries)
+}
+
+func NewRegistry(entries []Enrollment) (*Registry, error) {
+	reg := &Registry{Entries: entries}
 	if reg.Entries == nil {
 		return nil, errors.New("enrollments array required")
 	}
@@ -55,6 +60,6 @@ func Load(path string) (*Registry, error) {
 			reg.byCert[fp] = e
 		}
 	}
-	return &reg, nil
+	return reg, nil
 }
 func fingerprint(b []byte) string { return fmt.Sprintf("%x", sha256.Sum256(b)) }

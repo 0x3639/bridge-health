@@ -1,0 +1,208 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>{{.Title}} · Bridge Health</title>
+    <link rel="stylesheet" href="/assets/app.css">
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <div class="bar">
+        <a class="brand" href="/"><i class="mark" aria-hidden="true"><b></b><b></b><b></b><b></b></i>Bridge Health</a>
+        {{if .User}}
+        <nav aria-label="Main">
+          <a href="/" {{if ne .View "invites"}}aria-current="page"{{end}}>Overview</a><a href="/invitations" {{if eq .View "invites"}}aria-current="page"{{end}}>Invitations</a></nav>
+        <form method="post" action="/logout" class="account">
+          <span>{{.User}}</span><button class="quiet">Sign out</button></form>
+        {{end}}</div>
+    </header>
+    <main class="{{if or (eq .View "login") (eq .View "install")}}narrow{{end}}">
+      {{if eq .View "login"}}{{template "login" .}}
+      {{else if eq .View "install"}}{{template "install" .}}
+      {{else if eq .View "overview"}}{{template "overview" .}}
+      {{else if eq .View "invites"}}{{template "invites" .}}
+      {{else if eq .View "detail"}}{{template "detail" .}}
+      {{end}}</main>
+    <span id="copy-status" class="sr" aria-live="polite"></span></body>
+</html>
+{{end}}
+{{define "error"}}{{if .Error}}
+<div class="error" role="alert">
+  {{.Error}}</div>
+{{end}}{{end}}
+{{define "login"}}
+<section class="panel access">
+  <div class="eyebrow">
+    Receiver administration</div>
+  <h1>Sign in</h1>
+  <p class="sub">Manage node access and monitor heartbeat delivery.</p>
+  {{template "error" .}}
+  <form class="stack" method="post" action="/login">
+    <label>Username<input name="username" autocomplete="username" required autofocus></label>
+    <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+    <button class="primary">Sign in</button></form>
+</section>
+{{end}}
+{{define "install"}}
+<section class="panel access" id="installation" data-origin="{{.Origin}}">
+  <h1>Connect your node</h1>
+  <p class="sub">Run this command on the Linux host that runs your orchestrator. It installs the reporter, creates its private key on the node and starts the systemd service.</p>
+  <div id="valid-invite" hidden>
+    <label for="install-command">Installation command</label>
+    <textarea readonly id="install-command" rows="4" spellcheck="false"></textarea>
+    <button class="primary" type="button" data-copy="install-command">Copy command</button>
+    <p class="note">This command contains your invitation. Keep it private. The default socket is <code>/run/orchestrator-health/health.sock</code>.</p>
+  </div>
+  <p id="invalid-invite" role="status">Open the complete invitation link provided by your receiver administrator.</p>
+  <details>
+    <summary>Manual download and custom socket</summary>
+    <p><a href="/install.py" download>Download the installer</a> on the node, then run the command below and paste your invitation when prompted. For another socket path, append <code>--socket /absolute/path</code>.</p>
+    <pre>sudo python3 -I bridge-health-install.py</pre>
+  </details>
+  <noscript>Use the manual download instructions and paste the full invitation into the installer.</noscript>
+</section>
+{{end}}
+{{define "overview"}}
+<div class="heading">
+  <div>
+    <h1>Node overview</h1>
+  </div>
+  <a class="primary" href="/invitations#new">Invite operator <span aria-hidden="true">↗</span></a></div>
+<section class="metrics" aria-label="Fleet summary">
+  <div>
+    <span><i class="dot fresh"></i>Fresh nodes</span><strong>{{.Fresh}}</strong></div>
+  <div>
+    <span><i class="dot stale"></i>Stale nodes</span><strong>{{.Stale}}</strong></div>
+  <a href="/invitations"><span><i class="dot pending"></i>Pending invitations</span><strong>{{.Pending}}</strong></a></section>
+<section class="panel">
+  <div class="panel-head">
+    <h2>Reporter nodes</h2>
+    <a class="text-link" href="/">Refresh</a></div>
+  {{if .Nodes}}
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Node</th>
+          <th>Delivery</th>
+          <th>Socket read</th>
+          <th>Last heartbeat</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Nodes}}
+        <tr>
+          <td><a href="/nodes/{{.ID}}">{{.Name}}</a></td>
+          <td><span class="pill" data-state="{{.Delivery}}">{{.Delivery}}</span></td>
+          <td>{{if .LocalRead}}{{.LocalRead}}{{else}}—{{end}}</td>
+          <td>{{if .LastSeen.IsZero}}—{{else}}{{stamp .LastSeen}}{{end}}</td>
+        </tr>
+        {{end}}</tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="empty">
+    <h3>No reporters enrolled</h3>
+    <p>Generate an invitation for your first node operator. Their node will appear here when it enrolls.</p>
+    <a href="/invitations#new" class="text-link">Create an invitation →</a></div>
+  {{end}}</section>
+{{end}}
+{{define "invites"}}
+<div class="heading">
+  <div>
+    <h1>Invitations</h1>
+  </div>
+</div>
+{{template "error" .}}
+{{if .Link}}
+<div class="notice" role="status">
+  <h2>Invitation ready</h2>
+  <p>Send this private link to the operator. It expires in 24 hours and enrolls one node.</p>
+  <div class="inline">
+    <input id="share-link" readonly value="{{.Link}}" aria-label="Private installation URL"><button type="button" class="primary" data-copy="share-link">Copy link</button></div>
+  <p class="note">Copy it before leaving this page.</p>
+</div>
+{{end}}
+<section class="panel create" id="new">
+  <h2>Invite an operator</h2>
+  <p class="sub">Choose the name you want to see on the dashboard.</p>
+  <form class="inline" method="post" action="/invitations">
+    <label>Node name<input name="name" required maxlength="80" placeholder="e.g. DeeZNNutz.com"></label>
+    <button class="primary">Generate link</button></form>
+</section>
+<section class="panel">
+  <div class="panel-head">
+    <h2>Invitation history</h2>
+    <span class="count">{{len .Invites}}</span></div>
+  {{if .Invites}}
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Node</th>
+          <th>Status</th>
+          <th>Link expires</th>
+          <th>Access</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Invites}}
+        <tr>
+          <td>{{if .Cert}}
+            <a href="/nodes/{{.ID}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+          <td><span class="pill" data-state="{{.State}}">{{.State}}</span></td>
+          <td>{{stamp .InviteExpires}}</td>
+          <td>{{if eq .State "Pending"}}
+            <form method="post" action="/nodes/{{.ID}}/revoke" data-confirm="Cancel the invitation for {{.Name}}?">
+              <button class="action">Cancel link</button></form>
+            {{else if eq .State "Enrolled"}}
+            <form method="post" action="/nodes/{{.ID}}/revoke" data-confirm="Revoke access for {{.Name}}? The receiver will reject its heartbeats immediately.">
+              <button class="action">Revoke access</button></form>
+            {{else}}—{{end}}</td>
+        </tr>
+        {{end}}</tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="empty">
+    <h3>No invitations yet</h3>
+    <p>Generated links and their enrollment status will appear here.</p>
+  </div>
+  {{end}}</section>
+{{end}}
+{{define "detail"}}
+<a href="/" class="text-link">← Node overview</a>{{with .Detail}}
+<div class="heading">
+  <div>
+    <h1>{{.Name}}</h1>
+  </div>
+  <span class="pill" data-state="{{.Delivery}}">{{.Delivery}}</span></div>
+<section class="panel create">
+  <h2>Connection</h2>
+  <dl>
+    <dt>Stream ID</dt>
+    <dd><code>{{.ID}}</code></dd>
+    <dt>Certificate expires</dt>
+    <dd>{{stamp .CertExpires}}</dd>
+    <dt>Last heartbeat</dt>
+    <dd>{{if .LastSeen.IsZero}}—{{else}}{{stamp .LastSeen}}{{end}}</dd>
+    <dt>Sequence</dt>
+    <dd>{{.Sequence}}</dd>
+    <dt>Socket read</dt>
+    <dd>{{if .LocalRead}}{{.LocalRead}}{{else}}—{{end}}</dd>
+  </dl>
+  {{if eq .State "Enrolled"}}
+  <form method="post" action="/nodes/{{.ID}}/revoke" data-confirm="Revoke access for {{.Name}}? The receiver will reject its heartbeats immediately.">
+    <button class="quiet danger">Revoke access</button></form>
+  {{end}}</section>
+{{if .Snapshot}}
+<details class="panel create">
+  <summary>Latest heartbeat and last successful snapshot</summary>
+  <pre>{{.Snapshot}}</pre>
+</details>
+{{end}}{{end}}
+{{end}}
