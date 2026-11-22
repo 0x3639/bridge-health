@@ -1,4 +1,4 @@
-import { createElementVNode as _createElementVNode, toDisplayString as _toDisplayString, createTextVNode as _createTextVNode, openBlock as _openBlock, createElementBlock as _createElementBlock, createCommentVNode as _createCommentVNode, Fragment as _Fragment, vModelText as _vModelText, withDirectives as _withDirectives, renderList as _renderList, vModelSelect as _vModelSelect, normalizeClass as _normalizeClass } from "./vue.js"
+import { createElementVNode as _createElementVNode, toDisplayString as _toDisplayString, createTextVNode as _createTextVNode, openBlock as _openBlock, createElementBlock as _createElementBlock, createCommentVNode as _createCommentVNode, Fragment as _Fragment, vModelText as _vModelText, withDirectives as _withDirectives, renderList as _renderList, vModelSelect as _vModelSelect, normalizeClass as _normalizeClass, createStaticVNode as _createStaticVNode } from "./vue.js"
 
 const _hoisted_1 = { class: "heading" }
 const _hoisted_2 = ["disabled"]
@@ -63,7 +63,7 @@ const failure = ref(false)
 const loading = ref(false)
 const query = ref('')
 const filter = ref('All statuses')
-const chains = ['BNB', 'ETH', 'Supernova']
+const chains = ['BNB', 'ETH']
 const statuses = ['Online', 'Unavailable', 'Stale', 'Awaiting report']
 const controller = new AbortController()
 let timer
@@ -237,7 +237,7 @@ return (_ctx, _cache) => {
           _createElementVNode("tbody", null, [
             (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(filtered.value, (node) => {
               return (_openBlock(), _createElementBlock("tr", {
-                key: node.name
+                key: node.id
               }, [
                 _createElementVNode("th", _hoisted_11, [
                   (node.producer)
@@ -325,19 +325,7 @@ return (_ctx, _cache) => {
           ]))
         : _createCommentVNode("v-if", true)
     ]),
-    _cache[13] || (_cache[13] = _createElementVNode("details", { class: "guide" }, [
-      _createElementVNode("summary", null, "How to read this table"),
-      _createElementVNode("p", null, [
-        _createElementVNode("b", null, "Online"),
-        _createTextVNode(" means a recent heartbeat contained a valid local snapshot. "),
-        _createElementVNode("b", null, "Unavailable"),
-        _createTextVNode(" means the reporter checked in with a socket error. A heartbeat becomes "),
-        _createElementVNode("b", null, "stale"),
-        _createTextVNode(" after three minutes. ")
-      ]),
-      _createElementVNode("p", null, " Network columns show observed unsigned wraps / unwraps. An asterisk marks a partial count. A dash means the measurement is unavailable. Hover over a pair for its observation times. "),
-      _createElementVNode("p", null, " Response time measures a successful snapshot read on the operator’s host. Last checked is the receiver’s heartbeat receipt time in UTC. This page refreshes every 30 seconds. ")
-    ], -1 /* CACHED */))
+    _cache[13] || (_cache[13] = _createStaticVNode("<details class=\"guide\"><summary>How to read this table</summary><p><b>Online</b> means a recent heartbeat contained a valid local snapshot. <b>Unavailable</b> means the reporter checked in with a socket error. A heartbeat becomes <b>stale</b> after three minutes. </p><p> Network columns show observed unsigned wraps / unwraps. An asterisk marks a partial count. A dash means the measurement is unavailable. Hover over a pair for its observation times. </p><p> Response time measures a successful snapshot read on the operator’s host. Last checked is the receiver’s heartbeat receipt time in UTC. This page refreshes every 30 seconds. </p></details><p class=\"guide\"><a href=\"/api/docs\">Status API guide</a></p>", 2))
   ], 64 /* STABLE_FRAGMENT */))
 }
 }

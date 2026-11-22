@@ -233,14 +233,20 @@ func Statuses(dir string, reg *Registry, stale time.Duration, now time.Time) ([]
 
 // StreamStatus reads the latest durable heartbeat, including for a retired stream.
 func StreamStatus(dir string, e Enrollment, stale time.Duration, now time.Time) (Status, error) {
+	status, _, err := StreamStatusWithHistory(dir, e, stale, now)
+	return status, err
+}
+
+// StreamStatusWithHistory returns status and prior receipts from the same atomic stream file.
+func StreamStatusWithHistory(dir string, e Enrollment, stale time.Duration, now time.Time) (Status, []Stored, error) {
 	item, err := readLatest(dir, e.Stream)
 	if err != nil {
-		return Status{}, err
+		return Status{}, nil, err
 	}
 	row := Status{Node: e.Node, Stream: e.Stream, Delivery: "never", DisplayName: e.DisplayName, ExpectedNetworks: e.ExpectedNetworks}
 	if item != nil {
 		if item.Node != e.Node {
-			return Status{}, errors.New("saved stream belongs to a different node")
+			return Status{}, nil, errors.New("saved stream belongs to a different node")
 		}
 		row.Delivery = "fresh"
 		row.Latest = &item.Stored
@@ -248,6 +254,7 @@ func StreamStatus(dir string, e Enrollment, stale time.Duration, now time.Time) 
 		if now.Sub(item.ReceivedAt) >= stale {
 			row.Delivery = "stale"
 		}
+		return row, item.History, nil
 	}
-	return row, nil
+	return row, nil, nil
 }

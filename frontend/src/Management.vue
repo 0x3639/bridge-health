@@ -29,6 +29,10 @@ async function copy(field) {
     copied.value = 'Selected for copying.'
   }
 }
+function confirmTokenRevoke(event, token) {
+  if (!window.confirm(`Revoke the API token for ${token.Name}? Its access will end immediately.`))
+    event.preventDefault()
+}
 function confirmRevoke(event, node) {
   const message = node.Enrolled
     ? `Revoke access for ${node.Name}? The receiver will reject future heartbeats.`
@@ -38,8 +42,9 @@ function confirmRevoke(event, node) {
 </script>
 <template>
   <nav v-if="page.User" class="admin-nav" aria-label="Administration">
-    <a href="/admin" :aria-current="page.View !== 'invites' ? 'page' : null">Overview</a>
+    <a href="/admin" :aria-current="['overview', 'detail'].includes(page.View) ? 'page' : null">Overview</a>
     <a href="/invitations" :aria-current="page.View === 'invites' ? 'page' : null">Invitations</a>
+    <a href="/admin/tokens" :aria-current="page.View === 'tokens' ? 'page' : null">API tokens</a>
     <form method="post" action="/logout">
       <span>{{ page.User }}</span
       ><button class="quiet">Sign out</button>
@@ -142,6 +147,56 @@ function confirmRevoke(event, node) {
         <h3>No reporters enrolled</h3>
         <a href="/invitations#new">Create an invitation</a>
       </div>
+    </section>
+  </template>
+  <template v-else-if="page.View === 'tokens'">
+    <div class="heading"><h1>API tokens</h1><a href="/api/docs">API guide</a></div>
+    <section v-if="page.IssuedToken" class="panel create notice">
+      <h2>Copy your token</h2>
+      <p>This is the only time the full token is shown. Save it in the service’s secret store.</p>
+      <div class="inline">
+        <input ref="shareField" aria-label="New API token" readonly spellcheck="false" :value="page.IssuedToken" />
+        <button class="quiet" @click="copy(shareField)">Copy token</button>
+      </div>
+    </section>
+    <section class="panel create">
+      <h2>Issue a read-only token</h2>
+      <p>Services can read bridge status and heartbeat history. Send the token in the
+        <code>Authorization: Bearer</code> header when calling <code>GET /api/v1/status</code>.</p>
+      <form class="inline" method="post" action="/admin/tokens">
+        <label>Service name<input name="name" maxlength="80" required placeholder="e.g. Operations monitor" /></label>
+        <label>Expires in
+          <select name="days">
+            <option value="30">30 days</option>
+            <option value="90" selected>90 days</option>
+            <option value="365">365 days</option>
+          </select>
+        </label>
+        <button class="primary">Issue token</button>
+      </form>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Issued tokens</h2></div>
+      <div v-if="page.Tokens?.length" class="scroll">
+        <table>
+          <thead><tr><th>Service</th><th>Token ID</th><th>Issued</th><th>Expires</th><th>Access</th></tr></thead>
+          <tbody>
+            <tr v-for="t in page.Tokens" :key="t.ID">
+              <td>{{ t.Name }}</td>
+              <td class="mono">{{ t.ID }}</td>
+              <td>{{ stamp(t.Created) }}</td>
+              <td>{{ stamp(t.Expires) }}</td>
+              <td>
+                <form method="post" :action="'/admin/tokens/' + t.ID + '/revoke'"
+                  @submit="confirmTokenRevoke($event, t)">
+                  <button class="quiet danger">Revoke</button>
+                </form>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-else class="empty">No API tokens issued.</div>
     </section>
   </template>
   <template v-else-if="page.View === 'invites'">

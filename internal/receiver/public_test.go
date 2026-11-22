@@ -20,10 +20,10 @@ func TestPublicSnapshotProjection(t *testing.T) {
 	latency := uint32(1350)
 	s := collector.Status{Delivery: "fresh", Latest: &collector.Stored{ReadMicros: &latency, ReceivedAt: time.Now().UTC(), Report: wire.Report{LocalRead: "ok", Snapshot: json.RawMessage(snapshot)}}}
 	p, err := project(node{Name: "pilot"}, s)
-	if err != nil || p.Status != "Online" || p.State != "LiveState" || p.Phase != "running" || p.ReadMicros == nil || *p.ReadMicros != 1350 || len(p.Queues) != 3 {
+	if err != nil || p.Status != "Online" || p.State != "LiveState" || p.Phase != "running" || p.ReadMicros == nil || *p.ReadMicros != 1350 || len(p.Queues) != 2 {
 		t.Fatal(p, err)
 	}
-	for _, chain := range []string{"BNB", "ETH", "Supernova"} {
+	for _, chain := range []string{"BNB", "ETH"} {
 		q := p.Queues[chain]
 		if q.Wrap.Value == nil || *q.Wrap.Value != 0 || q.Unwrap.Value == nil || *q.Unwrap.Value != 9 || q.Unwrap.Quality != "partial" || q.Unwrap.AsOf == nil {
 			t.Fatal(chain, q)
@@ -49,5 +49,29 @@ func TestDirectoryProducerOverrides(t *testing.T) {
 	n = node{Name: "different-pillar"}
 	if n.publicProducer() != "" {
 		t.Fatal("unknown pillar assigned a producer")
+	}
+}
+
+func TestPublicRowIDsSurviveNameRedaction(t *testing.T) {
+	a := node{ID: "6cf71aa0-1814-42d1-bea8-156e291e2f99", Name: "pillar-192.0.2.7"}
+	b := node{ID: "524c88ca-02be-499f-a5ce-27c8881fc694", Name: "pillar-192.0.2.8"}
+	row := func(n node) publicNode {
+		t.Helper()
+		p, err := project(n, collector.Status{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	first, second := row(a), row(b)
+	if first.Name != "pillar-[redacted]" || first.Name != second.Name {
+		t.Fatal("expected identical redacted display names")
+	}
+	if first.ID == "" || second.ID == "" || first.ID == second.ID || first.ID == a.ID || second.ID == b.ID {
+		t.Fatal("expected distinct, opaque public row IDs")
+	}
+	a.Name = "renamed pillar"
+	if row(a).ID != first.ID {
+		t.Fatal("display name change replaced the public row ID")
 	}
 }

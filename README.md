@@ -15,19 +15,20 @@ The managed receiver includes the collector, a public Vue status page, password-
 | Connection | Destination | Authentication |
 | --- | --- | --- |
 | Visitors and administrators | `https://bridgestatus.0x3639.com` | The root and `/api/status` are public. Management requires signing in at `/admin`. |
+| Service integrations | `https://bridgestatus.0x3639.com/api/v1/status` | Read-only bearer token issued in **Admin → API tokens**. |
 | Installer and first enrollment | `https://bridgehealth.0x3639.com` | Coolify serves public HTTPS. Admin forms require a login session. Enrollment requires the private invitation and a signed CSR. |
 | Enrolled reporter | `https://bridgehealth.0x3639.com:8443/v1/heartbeats` | The receiver terminates mutual TLS and checks the active certificate fingerprint for the assigned stream on every request. |
 
-The Compose volume `receiver-data` holds the private CA, invitations, enrollments and heartbeat history under `/data/receiver`. Preserve it across redeployments. Back up the entire volume together while the receiver is stopped, protect the backup like a signing key, and keep the volume attached to only one receiver. Restarting the container ends browser sessions. To change the administrator password, update it in Coolify and redeploy.
+The Compose volume `receiver-data` holds the private CA, API token hashes, invitations, enrollments and heartbeat history under `/data/receiver`. Preserve it across redeployments. Back up the entire volume together while the receiver is stopped, protect the backup like a signing key, and keep the volume attached to only one receiver. Restarting the container ends browser sessions. To change the administrator password, update it in Coolify and redeploy.
 
 [Coolify Docker Compose setup](https://coolify.io/docs/applications/builds/docker-compose) · [Coolify domain configuration](https://coolify.io/docs/core/networking/domains)
 
 ## Public dashboard
 
-The public page lists enrolled, unrevoked reporters under their assigned pillar names. It refreshes every 30 seconds. A fresh, successful socket read appears as **Online**. A fresh heartbeat carrying a local read failure appears as **Unavailable**, with the reason. **Stale** means three minutes have elapsed since receipt. **Awaiting report** marks an enrolled node with no receipt. Each public update projects the latest report. Raw snapshots, stream identifiers, invitation history and certificates stay in administration.
+The public page lists enrolled, unrevoked reporters under their assigned pillar names. It refreshes every 30 seconds. A fresh, successful socket read appears as **Online**. A fresh heartbeat carrying a local read failure appears as **Unavailable**, with the reason. **Stale** means three minutes have elapsed since receipt. **Awaiting report** marks an enrolled node with no receipt. Each public update projects the latest report. The public table shows selected health metrics. Authenticated integrations can also read detailed telemetry through the service API.
 
 - **State** shows the orchestrator bridge state when known, with the process phase as a fallback.
-- **BNB, ETH and Supernova** show observed unsigned wraps / unwraps for EVM chain IDs 56, 1 and 73405. A partial count has an asterisk. Missing measurements display a dash. Hover over a pair for each observation's quality and time.
+- **BNB and ETH** show observed unsigned wraps / unwraps for EVM chain IDs 56 and 1. A partial count has an asterisk. Missing measurements display a dash. Hover over a pair for each observation's quality and time.
 - **Producer** defaults to the address for an exact, case-insensitive name match in the [explorer’s pillar directory](https://github.com/0x3639/explorer.zenon.info/blob/0abfad6f822b28f285d7584153f28b4e77686976/src/lib/constants.ts). Other names start blank. In **Overview**, open a node, fill in **Public listing → Producer address** and save. Clearing it removes the explorer links.
 - **Resp. time** is the reporter’s elapsed time to read and validate the local snapshot. Reporters built before this release omit that measurement. **Last checked** is the receiver's UTC receipt time.
 
@@ -40,6 +41,31 @@ cd frontend
 npm ci
 npm run build
 ```
+
+## Service status API
+
+The [public API guide](https://bridgestatus.0x3639.com/api/docs) includes a curl quickstart, example JSON, endpoint descriptions, and error codes.
+
+Sign in at `/admin`, open **API tokens**, enter the service name, choose a lifetime (30, 90 or 365 days), and select **Issue token**. Copy the token once and store it in the calling service’s secret store. The receiver persists its SHA-256 digest on the receiver volume. To rotate a token, issue a replacement, switch the service to it, then revoke the old token by ID.
+
+With `BRIDGE_HEALTH_TOKEN` set in the service environment, query the API over HTTPS:
+
+```sh
+curl --fail-with-body --silent --show-error \
+  -H "Authorization: Bearer ${BRIDGE_HEALTH_TOKEN}" \
+  https://bridgestatus.0x3639.com/api/v1/status
+```
+
+| GET path | Response |
+| --- | --- |
+| `/api/v1/status` | `updated` (UTC) and `nodes`, one entry per enrolled stream, including retired streams. |
+| `/api/v1/status/{streamId}` | `updated`, the same `node` object and `history`, up to 30 prior receipts in oldest-first order. The latest receipt is in `node.latest`. |
+
+Each node includes its name, stream ID, configured producer when available, creation time, certificate expiry, reporter access (`active`, `expired`, or `revoked`), and delivery (`never`, `fresh`, or `stale`). The `status` field summarizes reporter health as Online, Unavailable, Stale, Awaiting report, Revoked or Certificate expired. The optional `error` field gives the socket or delivery reason. A node awaiting its first report has `latest: null`. Each receipt includes the original heartbeat digest, receipt time, optional socket-read duration in microseconds, sequence, local-read status and snapshot. A failed local read has a null snapshot. When available, `historicalSuccess` holds the previous successful receipt with its original timestamp.
+
+Snapshots include build, phase, bridge state, Zenon sync, frontier and processed heights, and every reported network’s sync, scan and wrap/unwrap observations with their quality and timestamps. The v1 response uses an explicit set of telemetry fields. IPv4 and IPv6 literals in node names and build labels are redacted. Credentials and pending invitations are private to receiver administration.
+
+Missing, invalid, expired and revoked tokens return HTTP 401. An unknown stream returns 404 after authentication. Each token can average one request per second with a burst of ten. On HTTP 429, wait for the `Retry-After` interval before retrying. Reporters normally send a heartbeat about once a minute.
 
 ## Invite and install a node
 

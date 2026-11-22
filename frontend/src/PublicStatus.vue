@@ -6,7 +6,7 @@ const failure = ref(false)
 const loading = ref(false)
 const query = ref('')
 const filter = ref('All statuses')
-const chains = ['BNB', 'ETH', 'Supernova']
+const chains = ['BNB', 'ETH']
 const statuses = ['Online', 'Unavailable', 'Stale', 'Awaiting report']
 const controller = new AbortController()
 let timer
@@ -156,7 +156,7 @@ function queueTitle(pair) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="node in filtered" :key="node.name">
+          <tr v-for="node in filtered" :key="node.id">
             <th scope="row" class="pillar">
               <a
                 v-if="node.producer"
@@ -241,4 +241,5 @@ function queueTitle(pair) {
       receiver’s heartbeat receipt time in UTC. This page refreshes every 30 seconds.
     </p>
   </details>
+  <p class="guide"><a href="/api/docs">Status API guide</a></p>
 </template>
