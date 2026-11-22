@@ -93,11 +93,12 @@ class InstallerTest(unittest.TestCase):
                 # setup and a later run using the socket already created.
                 args.socket = None
                 socket_path = root / "health.sock"
+                socket_gid = gid + 1
                 real_stat = os.stat
                 def socket_stat(path, *a, **kw):
                     info = real_stat(path, *a, **kw)
                     if Path(path) == socket_path:
-                        return SimpleNamespace(st_mode=stat.S_IFSOCK | 0o660, st_gid=gid)
+                        return SimpleNamespace(st_mode=stat.S_IFSOCK | 0o660, st_gid=socket_gid)
                     return info
                 with patch.object(os, "stat", socket_stat), \
                      patch.object(installer, "DEFAULT_SOCKET", str(socket_path)), \
@@ -107,6 +108,21 @@ class InstallerTest(unittest.TestCase):
                     install(token)
                     enable.assert_called_once_with(gid)
                     self.assertEqual(verify.call_count, 2)
+
+                    def enroll_with_socket(*_):
+                        socket_path.touch()
+                        return origin + ":8443/v1/heartbeats"
+
+                    override_gid = socket_gid + 1
+                    with patch.object(installer, "credentials", side_effect=enroll_with_socket), \
+                         patch.object(installer.grp, "getgrnam", return_value=SimpleNamespace(gr_gid=override_gid)):
+                        for group, expected in [(None, socket_gid), ("custom-health", override_gid)]:
+                            with self.subTest(socket_group=group):
+                                socket_path.unlink()
+                                args.socket_group = group
+                                install(token)
+                                self.assertIn(f"SupplementaryGroups={expected}", unit.read_text().splitlines())
+                                enable.assert_called_once_with(gid)
 
     def test_exact_backup_and_retry(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -131,26 +147,30 @@ class InstallerTest(unittest.TestCase):
 
     def test_shutdown_config_is_read_after_stop_and_restart_even_on_failure(self):
         account = SimpleNamespace(pw_name="signer")
-        for fail in (False, True):
+        for failure in (None, "write", "stop"):
             steps = []
             def command(*args, **kw):
                 if args[0] == "runuser":
                     self.assertEqual(args[2], "signer")
-                    steps.append(args[-1])
-                    if fail and args[-1] == "write":
-                        raise OSError("write failed")
-                    return SimpleNamespace(stdout=b"55000")
-                steps.append(args[1])
-            with patch.object(installer, "signer_instance", return_value=(account, "/cfg", "active", 42)), \
+                    step = args[-1]
+                else:
+                    step = args[1]
+                steps.append(step)
+                if step == failure:
+                    raise subprocess.CalledProcessError(1, args)
+                return SimpleNamespace(stdout=b"55000")
+            with self.subTest(failure=failure), \
+                 patch.object(installer, "signer_instance", return_value=(account, "/cfg", "active", 42)), \
                  patch.object(installer, "prepare_socket_dir", side_effect=lambda *_: steps.append("directory")), \
                  patch.object(installer, "wait_for_startup", side_effect=lambda *_: steps.append("ready")), \
                  patch.object(installer, "run", command), patch("builtins.print"):
-                if fail:
-                    with self.assertRaises(OSError):
+                if failure:
+                    with self.assertRaises(subprocess.CalledProcessError):
                         installer.enable_snapshot(99)
                 else:
                     installer.enable_snapshot(99)
-            self.assertEqual(steps, ["check", "directory", "ready", "stop", "write", "start"])
+                after_stop = ["start"] if failure == "stop" else ["write", "start"]
+                self.assertEqual(steps, ["check", "directory", "ready", "stop"] + after_stop)
 
     def test_tmpfiles_rule_recreates_private_runtime_dir(self):
         account = SimpleNamespace(pw_uid=os.getuid(), pw_name="signer")

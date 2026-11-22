@@ -261,10 +261,10 @@ def enable_snapshot(gid):
     if signer_instance()[2] != invocation:
         raise ValueError("The orchestrator instance changed before setup. Rerun the installer.")
     # A graceful stop persists the in-memory config. Read the file again and
-    # edit only after it stops. Restore service even if backup or editing fails.
+    # edit only after a successful stop. Even a failed stop can take the signer down.
     print("Startup sync finished. Stopping orchestrator.service to set HealthConfig.SnapshotSocket.", flush=True)
-    run("systemctl", "stop", "orchestrator.service")
     try:
+        run("systemctl", "stop", "orchestrator.service")
         run(*edit, "write")
     finally:
         run("systemctl", "start", "orchestrator.service")
@@ -287,6 +287,20 @@ def verify_delivery():
         time.sleep(2)
     raise ValueError("Reporter started but no successful snapshot heartbeat was confirmed. "
                      "Check journalctl -u bridge-health-reporter -n 20.")
+
+
+def socket_group_id(path, automatic):
+    if automatic and Path(path).parent.is_symlink():
+        raise ValueError("Automatic setup requires a direct socket path.")
+    try:
+        sock = os.stat(path, follow_symlinks=not automatic)
+    except FileNotFoundError:
+        return None
+    if automatic and stat.S_ISLNK(sock.st_mode):
+        raise ValueError("Automatic setup requires a direct socket path.")
+    if not stat.S_ISSOCK(sock.st_mode):
+        raise ValueError("The configured health socket path is not a Unix socket.")
+    return sock.st_gid
 
 
 def install(args):
@@ -317,14 +331,7 @@ def install(args):
                 raise ValueError(f"An existing service owns {UNIT}. Review it before installing.")
             if marker != "# Managed by Bridge Health: " + stream and not args.replace:
                 raise ValueError("A different stream is installed. Use --replace to switch this host to the new invitation.")
-        sock_gid = None
-        if automatic and (Path(socket).is_symlink() or Path(socket).parent.is_symlink()):
-            raise ValueError("Automatic setup requires a direct socket path.")
-        if Path(socket).exists():
-            sock = os.stat(socket)
-            if not stat.S_ISSOCK(sock.st_mode):
-                raise ValueError("The configured health socket path is not a Unix socket.")
-            sock_gid = sock.st_gid
+        sock_gid = socket_group_id(socket, automatic)
         binary = download(arch)
         gid = service_group()
         if args.socket_group:
@@ -339,9 +346,13 @@ def install(args):
         os.chown(folder, 0, gid)
         os.chmod(folder, 0o750)
         endpoint = credentials(folder, token, gid)
-        if automatic and not Path(socket).exists():
-            sock_gid = sock_gid or gid
-            enable_snapshot(sock_gid)
+        if automatic:
+            current_gid = socket_group_id(socket, automatic)
+            if not args.socket_group:
+                sock_gid = current_gid
+            if current_gid is None:
+                sock_gid = sock_gid or gid
+                enable_snapshot(sock_gid)
         if not BINARY.parent.exists():
             BINARY.parent.mkdir(parents=True)
             BINARY.parent.chmod(0o755)
