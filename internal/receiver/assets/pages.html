@@ -54,7 +54,7 @@
   <section class="panel">
     <div class="panel-head">Last update <time datetime="{{.Updated.UTC.Format "2006-01-02T15:04:05Z"}}">{{.Updated.UTC.Format "2006-01-02 15:04:05 UTC"}}</time></div>
     {{if .Nodes}}
-    <div class="scroll"><table class="status-table">
+    <div class="scroll" role="region" aria-label="Pillar status table" tabindex="0"><table class="status-table">
       <thead><tr><th scope="col">Pillar</th><th scope="col">Status</th><th scope="col">State or phase</th><th scope="col">Producer</th><th scope="col">BNB wraps / unwraps</th><th scope="col">ETH wraps / unwraps</th><th scope="col">Local read</th><th scope="col">Last checked (UTC)</th><th scope="col">Error</th></tr></thead>
       <tbody>{{range .Nodes}}<tr>
         <th scope="row" class="pillar">{{.Name}}</th>

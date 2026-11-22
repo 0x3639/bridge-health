@@ -71,6 +71,9 @@ func TestPublicDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	body = get("/", "text/html").Body.String()
+	if !strings.Contains(body, `role="region" aria-label="Pillar status table" tabindex="0"><table class="status-table">`) {
+		t.Error("server-rendered pillar table needs a named, keyboard-focusable scroll region")
+	}
 	markdown := get("/index.md", "text/markdown").Body.String()
 	if !strings.Contains(body, `<th scope="row" class="pillar">Pillar | &lt;east&gt; [redacted]</th>`) ||
 		!strings.Contains(markdown, `| Pillar \| &lt;east&gt; \[redacted\] | Awaiting report |`) {
