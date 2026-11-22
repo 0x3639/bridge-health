@@ -19,6 +19,7 @@ import (
 
 type Config struct {
 	State, Downloads, Origin, StatusOrigin, User, Password, WebListen, HeartbeatListen string
+	CanonicalOrigin, TwitterSite                                                       string
 	HeartbeatPort                                                                      int
 }
 
@@ -36,6 +37,9 @@ func Run(ctx context.Context, c Config) error {
 	}
 	if _, ok := validOrigin(c.StatusOrigin); !ok {
 		return errors.New("STATUS_URL must be an HTTPS origin with a DNS hostname and no trailing slash")
+	}
+	if c.CanonicalOrigin != "" && c.CanonicalOrigin != c.Origin && c.CanonicalOrigin != c.StatusOrigin {
+		return errors.New("CANONICAL_URL must match PUBLIC_URL or STATUS_URL")
 	}
 	if c.User == "" || len(c.Password) < 16 {
 		return errors.New("set ADMIN_USERNAME and an ADMIN_PASSWORD of at least 16 characters")
@@ -61,6 +65,10 @@ func Run(ctx context.Context, c Config) error {
 	if err != nil {
 		return err
 	}
+	if c.CanonicalOrigin != "" {
+		ui.canonicalOrigin = c.CanonicalOrigin
+	}
+	ui.twitterSite = c.TwitterSite
 	server := func(h http.Handler) *http.Server {
 		return &http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 2 * time.Minute, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
 	}

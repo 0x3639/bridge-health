@@ -35,6 +35,7 @@ type web struct {
 	tokens                                          *apiTokens
 	fleet                                           *fleet
 	origin, statusOrigin, endpoint, downloads, user string
+	canonicalOrigin, twitterSite                    string
 	password                                        [32]byte
 	loginRate, enrollRate                           *rate.Limiter
 	mu                                              sync.Mutex
@@ -69,7 +70,7 @@ func newWeb(f *fleet, origin, statusOrigin, endpoint, downloads, user, password 
 	if err != nil {
 		return nil, err
 	}
-	return &web{tokens: tokens, fleet: f, origin: origin, statusOrigin: statusOrigin, endpoint: endpoint, downloads: downloads, user: user, password: sha256.Sum256([]byte(password)),
+	return &web{tokens: tokens, fleet: f, origin: origin, statusOrigin: statusOrigin, canonicalOrigin: statusOrigin, endpoint: endpoint, downloads: downloads, user: user, password: sha256.Sum256([]byte(password)),
 		loginRate: rate.NewLimiter(rate.Every(2*time.Second), 12), enrollRate: rate.NewLimiter(4, 20),
 		sessions: map[string]time.Time{}, installer: []byte(src)}, nil
 }
@@ -84,7 +85,7 @@ func (a *web) handler() http.Handler {
 	m.HandleFunc("GET /{$}", a.publicPage)
 	a.discoveryRoutes(m)
 	m.HandleFunc("GET /api/docs", func(w http.ResponseWriter, r *http.Request) {
-		a.render(w, http.StatusOK, page{View: "api-docs", Title: "Status API guide", Origin: a.statusOrigin})
+		a.render(w, http.StatusOK, page{View: "api-docs", Title: "Status API guide", Origin: a.canonicalOrigin})
 	})
 	m.HandleFunc("GET /api/status", a.publicStatus)
 	m.HandleFunc("GET /api/v1/status", a.requireAPIToken(a.apiStatus))
@@ -128,7 +129,7 @@ func (a *web) handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		if r.Method == "POST" {
 			r.Body = http.MaxBytesReader(w, r.Body, 12<<10)
 			// Browser management forms must originate on the configured HTTPS site.
@@ -217,6 +218,7 @@ type row struct {
 	Sequence                             uint64
 }
 type page struct {
+	TwitterSite                            string          `json:"-"`
 	Public                                 *publicSnapshot `json:"-"`
 	Tokens                                 []tokenInfo     `json:",omitempty"`
 	IssuedToken                            string          `json:",omitempty"`

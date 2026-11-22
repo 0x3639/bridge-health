@@ -41,7 +41,7 @@ func (p publicNode) QueueCounts(network string) string {
 
 func (a *web) publicPage(w http.ResponseWriter, r *http.Request) {
 	snapshot, err := a.publicData(time.Now().UTC())
-	p := page{View: "public", Title: "Zenon Bridge Pillar Status", Origin: a.statusOrigin, Public: snapshot}
+	p := page{View: "public", Title: "Zenon Bridge Pillar Status", Origin: a.canonicalOrigin, TwitterSite: a.twitterSite, Public: snapshot}
 	if err != nil {
 		log.Printf("public status: %v", err)
 		w.Header().Set("Retry-After", "30")
@@ -59,7 +59,7 @@ func (a *web) discoveryRoutes(m *http.ServeMux) {
 		{"index.md", "text/markdown"},
 	} {
 		m.HandleFunc("GET /"+doc.name, func(w http.ResponseWriter, r *http.Request) {
-			p := page{Origin: a.statusOrigin}
+			p := page{Origin: a.canonicalOrigin}
 			if doc.name == "index.md" {
 				var err error
 				p.Public, err = a.publicData(time.Now().UTC())
@@ -75,10 +75,24 @@ func (a *web) discoveryRoutes(m *http.ServeMux) {
 		})
 	}
 
-	for _, file := range []string{"favicon.ico", "bridge-health.jpg"} {
-		m.HandleFunc("GET /"+file, func(w http.ResponseWriter, r *http.Request) {
+	for _, file := range []struct{ name, mediaType string }{
+		{"bridge-health.jpg", "image/jpeg"},
+		{"favicon.ico", "image/x-icon"},
+		{"favicon.svg", "image/svg+xml"},
+		{"favicon-32x32.png", "image/png"},
+		{"apple-touch-icon.png", "image/png"},
+		{"icon-192.png", "image/png"},
+		{"icon-512.png", "image/png"},
+		{"site.webmanifest", "application/manifest+json"},
+	} {
+		m.HandleFunc("GET /"+file.name, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", file.mediaType)
+			if file.name == "bridge-health.jpg" {
+				w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			}
 			w.Header().Set("Cache-Control", "public, max-age=3600")
-			http.ServeFileFS(w, r, assets, "assets/share/"+file)
+			http.ServeFileFS(w, r, assets, "assets/share/"+file.name)
 		})
 	}
 }

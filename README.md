@@ -25,6 +25,8 @@ The Compose volume `receiver-data` holds the private CA, API token hashes, invit
 
 ## Public dashboard
 
+Coolify uses `https://bridgehealth.0x3639.com` for canonical URLs, social previews, the sitemap and the guide at `/llms.txt`. Set `CANONICAL_URL` to either configured HTTPS origin. When omitted it defaults to `STATUS_URL`. Set `TWITTER_SITE` to the publisher’s X handle. The standalone receiver omits the tag when the setting is empty.
+
 The public page lists enrolled, unrevoked reporters under their assigned pillar names. It refreshes every 30 seconds. A fresh, successful socket read appears as **Online**. A fresh heartbeat carrying a local read failure appears as **Unavailable**, with the reason. **Stale** means three minutes have elapsed since receipt. **Awaiting report** marks an enrolled node with no receipt. Each public update projects the latest report. The public table shows selected health metrics. Authenticated integrations can also read detailed telemetry through the service API.
 
 - **State** shows the orchestrator bridge state when known, with the process phase as a fallback.

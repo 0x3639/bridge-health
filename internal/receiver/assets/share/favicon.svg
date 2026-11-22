@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="zenon" x2="0" y2="1">
+      <stop stop-color="#6ff34d"/>
+      <stop offset="1" stop-color="#2f781c"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#121713"/>
+  <path transform="translate(66.5 29.5) scale(2.56)" fill="url(#zenon)"
+        d="M48 0H0v9.43h30.87L0 28.63V77h8.37V52.86L39.47 77H48V29.93H15.75L48 9.3ZM39.47 39.3l.02 25.16L8.37 39.33v-.03Z"/>
+</svg>
