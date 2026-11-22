@@ -7,6 +7,8 @@ services:
     environment:
       PUBLIC_URL: https://bridgehealth.0x3639.com
       STATUS_URL: https://bridgestatus.0x3639.com
+      CANONICAL_URL: https://bridgehealth.0x3639.com
+      TWITTER_SITE: "${TWITTER_SITE:-@0x3639}"
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set a strong receiver admin password in Coolify}
     expose:

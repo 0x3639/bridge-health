@@ -4,17 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#151515">
   <title>{{.Title}} · Bridge Health</title>
   <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48 64x64">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   {{if eq .View "public" -}}
   {{$description := "View the latest heartbeat, bridge state, and observed Ethereum and BNB Smart Chain wrap and unwrap queues for each enrolled Zenon pillar." -}}
   {{$imageAlt := "Bridge Health — tokens moving between the Zenon and Ethereum networks." -}}
+  <link rel="manifest" href="/site.webmanifest">
   <meta name="description" content="{{$description}}">
   <link rel="canonical" href="{{.Origin}}/">
   <link rel="alternate" type="text/markdown" href="/index.md" title="Pillar status in Markdown">
   <link rel="alternate" type="application/json" href="/api/status" title="Public status snapshot">
   <link rel="describedby" type="text/plain" href="/llms.txt" title="Bridge Health guide">
   <meta property="og:type" content="website">
+  <meta property="og:locale" content="en_US">
   <meta property="og:site_name" content="Bridge Health">
   <meta property="og:title" content="{{.Title}} · Bridge Health">
   <meta property="og:description" content="{{$description}}">
@@ -25,8 +31,22 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="{{$imageAlt}}">
   <meta name="twitter:card" content="summary_large_image">
+  {{with .TwitterSite}}<meta name="twitter:site" content="{{.}}">{{end}}
+  <meta name="twitter:title" content="{{.Title}} · Bridge Health">
+  <meta name="twitter:description" content="{{$description}}">
   <meta name="twitter:image" content="{{.Origin}}/bridge-health.jpg">
   <meta name="twitter:image:alt" content="{{$imageAlt}}">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "url": {{printf "%s/" .Origin}},
+    "name": {{printf "%s · Bridge Health" .Title}},
+    "description": {{$description}},
+    "inLanguage": "en-US",
+    "image": {{printf "%s/bridge-health.jpg" .Origin}}
+  }
+  </script>
   {{else if eq .View "api-docs" -}}
   <link rel="canonical" href="{{.Origin}}/api/docs">
   <meta name="description" content="Use the Bridge Health service API to query enrolled reporters and their heartbeat history.">
