@@ -169,7 +169,11 @@ function queueTitle(pair) {
               <span class="pill" :data-state="node.status">{{ node.status }}</span>
             </td>
             <td data-label="State" :title="stateNames[node.phase]">
-              {{ stateNames[node.state] || stateNames[node.phase] || '—' }}
+              <template v-if="node.state && node.phase && node.phase !== 'running'">
+                {{ stateNames[node.state] || node.state }}
+                <span class="phase">{{ stateNames[node.phase] || node.phase }}</span>
+              </template>
+              <template v-else>{{ stateNames[node.state] || stateNames[node.phase] || '—' }}</template>
             </td>
             <td data-label="Producer">
               <a

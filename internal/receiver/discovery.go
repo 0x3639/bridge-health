@@ -31,6 +31,19 @@ func (o observation) countLabel() string {
 	return n
 }
 
+func (p publicNode) StateLabel() string {
+	switch {
+	case p.State != "" && p.Phase != "" && p.Phase != "running":
+		return p.State + " (" + p.Phase + ")"
+	case p.State != "":
+		return p.State
+	case p.Phase != "":
+		return p.Phase
+	default:
+		return "—"
+	}
+}
+
 func (p publicNode) QueueCounts(network string) string {
 	q, ok := p.Queues[network]
 	if !ok {

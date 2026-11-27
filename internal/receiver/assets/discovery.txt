@@ -55,7 +55,7 @@ Snapshot generated at {{.Public.Updated.UTC.Format "2006-01-02T15:04:05Z"}}.
 | Pillar | Reporter status | Bridge state or phase | Producer | BNB wraps / unwraps | ETH wraps / unwraps | Local read (µs) | Last heartbeat (UTC) | Error |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 {{range .Public.Nodes -}}
-| {{cell .Name}} | {{.Status}} | {{or .State .Phase "—"}} | {{or .Producer "—"}} | {{.QueueCounts "BNB"}} | {{.QueueCounts "ETH"}} | {{with .ReadMicros}}{{.}}{{else}}—{{end}} | {{with .Checked}}{{.UTC.Format "2006-01-02T15:04:05Z"}}{{else}}—{{end}} | {{or .Error "—"}} |
+| {{cell .Name}} | {{.Status}} | {{.StateLabel}} | {{or .Producer "—"}} | {{.QueueCounts "BNB"}} | {{.QueueCounts "ETH"}} | {{with .ReadMicros}}{{.}}{{else}}—{{end}} | {{with .Checked}}{{.UTC.Format "2006-01-02T15:04:05Z"}}{{else}}—{{end}} | {{or .Error "—"}} |
 {{end}}
 Counts are observed unsigned requests. A partial count includes only the work observed so far. A dash or “unknown” indicates an unavailable measurement.
 {{else}}

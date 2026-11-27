@@ -457,6 +457,11 @@ td.mono {
 .danger {
   color: color-mix(in srgb, var(--destructive) 75%, var(--foreground));
 }
+.phase {
+  display: block;
+  font-size: 12px;
+  color: var(--warning);
+}
 .empty {
   text-align: center;
   border-top: 1px solid var(--border);

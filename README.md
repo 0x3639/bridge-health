@@ -29,7 +29,7 @@ Coolify uses `https://bridgehealth.0x3639.com` for canonical URLs, social previe
 
 The public page lists enrolled, unrevoked reporters under their assigned pillar names. It refreshes every 30 seconds. A fresh, successful socket read appears as **Online**. A fresh heartbeat carrying a local read failure appears as **Unavailable**, with the reason. **Stale** means three minutes have elapsed since receipt. **Awaiting report** marks an enrolled node with no receipt. Each public update projects the latest report. The public table shows selected health metrics. Authenticated integrations can also read detailed telemetry through the service API.
 
-- **State** shows the orchestrator bridge state when known, with the process phase as a fallback.
+- **State** shows the orchestrator bridge state when known, plus the process phase whenever it is not `running` (such as `Syncing bridge` or `Waiting for Zenon`).
 - **BNB and ETH** show observed unsigned wraps / unwraps for EVM chain IDs 56 and 1. A partial count has an asterisk. Missing measurements display a dash. Hover over a pair for each observation's quality and time.
 - **Producer** defaults to the address for an exact, case-insensitive name match in the [explorer’s pillar directory](https://github.com/0x3639/explorer.zenon.info/blob/0abfad6f822b28f285d7584153f28b4e77686976/src/lib/constants.ts). Other names start blank. In **Overview**, open a node, fill in **Public listing → Producer address** and save. Clearing it removes the explorer links.
 - **Resp. time** is the reporter’s elapsed time to read and validate the local snapshot. Reporters built before this release omit that measurement. **Last checked** is the receiver's UTC receipt time.
