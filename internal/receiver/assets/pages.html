@@ -79,7 +79,7 @@
       <tbody>{{range .Nodes}}<tr>
         <th scope="row" class="pillar">{{.Name}}</th>
         <td data-label="Status"><span class="pill" data-state="{{.Status}}">{{.Status}}</span></td>
-        <td data-label="State or phase">{{or .State .Phase "—"}}</td>
+        <td data-label="State or phase">{{.StateLabel}}</td>
         <td data-label="Producer" class="mono">{{or .Producer "—"}}</td>
         <td data-label="BNB wraps / unwraps">{{.QueueCounts "BNB"}}</td>
         <td data-label="ETH wraps / unwraps">{{.QueueCounts "ETH"}}</td>

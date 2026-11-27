@@ -75,3 +75,19 @@ func TestPublicRowIDsSurviveNameRedaction(t *testing.T) {
 		t.Fatal("display name change replaced the public row ID")
 	}
 }
+
+func TestPublicStateLabelShowsNonRunningPhase(t *testing.T) {
+	for _, tc := range []struct {
+		state, phase, want string
+	}{
+		{"LiveState", "running", "LiveState"},
+		{"LiveState", "syncingBridge", "LiveState (syncingBridge)"},
+		{"EmergencyState", "syncingBridge", "EmergencyState (syncingBridge)"},
+		{"", "waitingForZenon", "waitingForZenon"},
+		{"", "", "—"},
+	} {
+		if got := (publicNode{State: tc.state, Phase: tc.phase}).StateLabel(); got != tc.want {
+			t.Errorf("StateLabel(%q, %q) = %q, want %q", tc.state, tc.phase, got, tc.want)
+		}
+	}
+}

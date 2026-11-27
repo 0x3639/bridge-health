@@ -30,26 +30,27 @@ const _hoisted_12 = ["href"]
 const _hoisted_13 = { "data-label": "Status" }
 const _hoisted_14 = ["data-state"]
 const _hoisted_15 = ["title"]
-const _hoisted_16 = { "data-label": "Producer" }
-const _hoisted_17 = ["title", "href"]
-const _hoisted_18 = { key: 1 }
-const _hoisted_19 = ["data-label", "title"]
-const _hoisted_20 = {
+const _hoisted_16 = { class: "phase" }
+const _hoisted_17 = { "data-label": "Producer" }
+const _hoisted_18 = ["title", "href"]
+const _hoisted_19 = { key: 1 }
+const _hoisted_20 = ["data-label", "title"]
+const _hoisted_21 = {
   "data-label": "Resp. time",
   class: "mono",
   title: "Reporter’s local snapshot read time"
 }
-const _hoisted_21 = {
+const _hoisted_22 = {
   "data-label": "Last checked (UTC)",
   class: "mono"
 }
-const _hoisted_22 = ["datetime"]
-const _hoisted_23 = {
+const _hoisted_23 = ["datetime"]
+const _hoisted_24 = {
   key: 0,
   class: "empty",
   role: "status"
 }
-const _hoisted_24 = { key: 0 }
+const _hoisted_25 = { key: 0 }
 
 import { computed, onMounted, onUnmounted, ref } from './vue.js'
 
@@ -260,16 +261,25 @@ return (_ctx, _cache) => {
                 _createElementVNode("td", {
                   "data-label": "State",
                   title: stateNames[node.phase]
-                }, _toDisplayString(stateNames[node.state] || stateNames[node.phase] || '—'), 9 /* TEXT, PROPS */, _hoisted_15),
-                _createElementVNode("td", _hoisted_16, [
+                }, [
+                  (node.state && node.phase && node.phase !== 'running')
+                    ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
+                        _createTextVNode(_toDisplayString(stateNames[node.state] || node.state) + " ", 1 /* TEXT */),
+                        _createElementVNode("span", _hoisted_16, _toDisplayString(stateNames[node.phase] || node.phase), 1 /* TEXT */)
+                      ], 64 /* STABLE_FRAGMENT */))
+                    : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
+                        _createTextVNode(_toDisplayString(stateNames[node.state] || stateNames[node.phase] || '—'), 1 /* TEXT */)
+                      ], 64 /* STABLE_FRAGMENT */))
+                ], 8 /* PROPS */, _hoisted_15),
+                _createElementVNode("td", _hoisted_17, [
                   (node.producer)
                     ? (_openBlock(), _createElementBlock("a", {
                         key: 0,
                         class: "mono",
                         title: node.producer,
                         href: 'https://explorer.zenon.info/address/' + node.producer
-                      }, _toDisplayString(node.producer.slice(0, 5)) + "…" + _toDisplayString(node.producer.slice(-5)), 9 /* TEXT, PROPS */, _hoisted_17))
-                    : (_openBlock(), _createElementBlock("span", _hoisted_18, "—"))
+                      }, _toDisplayString(node.producer.slice(0, 5)) + "…" + _toDisplayString(node.producer.slice(-5)), 9 /* TEXT, PROPS */, _hoisted_18))
+                    : (_openBlock(), _createElementBlock("span", _hoisted_19, "—"))
                 ]),
                 (_openBlock(), _createElementBlock(_Fragment, null, _renderList(chains, (chain) => {
                   return _createElementVNode("td", {
@@ -285,19 +295,19 @@ return (_ctx, _cache) => {
                       : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
                           _createTextVNode("—")
                         ], 64 /* STABLE_FRAGMENT */))
-                  ], 8 /* PROPS */, _hoisted_19)
+                  ], 8 /* PROPS */, _hoisted_20)
                 }), 64 /* STABLE_FRAGMENT */)),
-                _createElementVNode("td", _hoisted_20, _toDisplayString(node.readMicros == null
+                _createElementVNode("td", _hoisted_21, _toDisplayString(node.readMicros == null
                   ? '—'
                   : (node.readMicros / 1000).toLocaleString(undefined, {
                       maximumFractionDigits: 2,
                     }) + ' ms'), 1 /* TEXT */),
-                _createElementVNode("td", _hoisted_21, [
+                _createElementVNode("td", _hoisted_22, [
                   (node.checked)
                     ? (_openBlock(), _createElementBlock("time", {
                         key: 0,
                         datetime: node.checked
-                      }, _toDisplayString(formatTime(node.checked)), 9 /* TEXT, PROPS */, _hoisted_22))
+                      }, _toDisplayString(formatTime(node.checked)), 9 /* TEXT, PROPS */, _hoisted_23))
                     : (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
                         _createTextVNode("—")
                       ], 64 /* STABLE_FRAGMENT */))
@@ -312,10 +322,10 @@ return (_ctx, _cache) => {
         ])
       ]),
       (!filtered.value.length)
-        ? (_openBlock(), _createElementBlock("div", _hoisted_23, [
+        ? (_openBlock(), _createElementBlock("div", _hoisted_24, [
             _createElementVNode("h3", null, _toDisplayString(emptyMessage.value), 1 /* TEXT */),
             (data.value && !nodes.value.length)
-              ? (_openBlock(), _createElementBlock("p", _hoisted_24, "Pillars appear here when their reporter enrolls."))
+              ? (_openBlock(), _createElementBlock("p", _hoisted_25, "Pillars appear here when their reporter enrolls."))
               : _createCommentVNode("v-if", true),
             (data.value && nodes.value.length)
               ? (_openBlock(), _createElementBlock("button", {
