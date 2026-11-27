@@ -93,6 +93,12 @@ type selection struct {
 	Count  uint64 `json:"count"`
 }
 
+type apiReceiveHold struct {
+	Height   uint64    `json:"height"`
+	Since    time.Time `json:"since"`
+	Attempts uint64    `json:"attempts"`
+}
+
 type apiSnapshot struct {
 	SchemaVersion int       `json:"schemaVersion"`
 	SampledAt     time.Time `json:"sampledAt"`
@@ -107,6 +113,7 @@ type apiSnapshot struct {
 		NodeSync               apiObservation[string] `json:"nodeSync"`
 		FrontierMomentum       observation            `json:"frontierMomentum"`
 		ProcessedReceiveHeight observation            `json:"processedReceiveHeight"`
+		ReceiveHold            *apiReceiveHold        `json:"receiveHold,omitempty"`
 	} `json:"zenon"`
 	NetworksKnown bool `json:"networksKnown"`
 	Networks      []struct {

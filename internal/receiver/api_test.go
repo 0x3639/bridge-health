@@ -241,6 +241,68 @@ func TestAPIStatusAndHistory(t *testing.T) {
 	}
 }
 
+func TestAPIStatusProjectsReceiveHold(t *testing.T) {
+	a := testReceiver(t)
+	now := time.Now().UTC()
+	secret, err := a.tokens.issue("monitor", time.Hour, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invite, err := a.fleet.invite("held-pillar", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, csr, _ := operatorKey(t)
+	creds, err := a.fleet.redeem(invite, csr, endpoint, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("../wire/schemas/testdata/startup.heartbeat.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report wire.Report
+	if err := json.Unmarshal(b, &report); err != nil {
+		t.Fatal(err)
+	}
+	var snap map[string]any
+	if err := json.Unmarshal(report.Snapshot, &snap); err != nil {
+		t.Fatal(err)
+	}
+	zenon := snap["zenon"].(map[string]any)
+	zenon["receiveHold"] = map[string]any{
+		"height":   16221,
+		"since":    "2026-11-21T12:00:00Z",
+		"attempts": 3,
+		"cause":    "private-error",
+	}
+	report.Snapshot, err = json.Marshal(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report.Stream = creds.Stream
+	stored := collector.Stored{Node: "held-pillar", ReceivedAt: now, Digest: "held-digest", Report: report}
+	if err := localstate.Write(filepath.Join(a.fleet.dir, creds.Stream+".json"), stored); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/v1/status/"+creds.Stream, nil)
+	req.Header.Set("Authorization", "Bearer "+secret)
+	w := httptest.NewRecorder()
+	a.handler().ServeHTTP(w, req)
+	body := w.Body.String()
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, body)
+	}
+	if strings.Contains(body, "private-error") {
+		t.Fatalf("extra receiveHold field leaked into API response: %s", body)
+	}
+	for _, want := range []string{`"receiveHold":{"height":16221,"since":"2026-11-21T12:00:00Z","attempts":3}`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %s in response: %s", want, body)
+		}
+	}
+}
+
 func TestStatusAddressPrivacy(t *testing.T) {
 	for _, ip := range []string{"192.0.2.17", "010.000.002.017", "999.2.3.192.0.2.1", "2001:db8::4", "::1", "::ffff:192.0.2.1", "fe80::3%eth0", "2001:0DB8:0000:0000:0000:0000:0000:0001", "0:0:0:0:0:ffff:192.0.2.1"} {
 		for _, field := range []string{ip, "node-" + ip, "https://[" + ip + "]:8443/path", "/ip6/" + ip + "/tcp/443"} {
