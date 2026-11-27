@@ -217,7 +217,7 @@ func checkObservationTimes(value any, sampledAt time.Time) error {
 	case map[string]any:
 		for key, child := range v {
 			switch key {
-			case "asOf", "lastRangeAt":
+			case "asOf", "lastRangeAt", "since":
 				if child != nil {
 					stamp, err := time.Parse(time.RFC3339Nano, child.(string))
 					if err != nil || stamp.After(sampledAt) {

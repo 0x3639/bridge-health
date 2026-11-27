@@ -201,8 +201,15 @@ func TestEnrolledOperatorFlow(t *testing.T) {
 		t.Fatalf("unexpected first report: %+v", first)
 	}
 	var snap struct {
-		Build    struct{ Version string }
-		Zenon    struct{ NodeSync struct{ Value string } }
+		Build struct{ Version string }
+		Zenon struct {
+			NodeSync    struct{ Value string }
+			ReceiveHold *struct {
+				Height   uint64
+				Since    time.Time
+				Attempts uint64
+			}
+		}
 		Networks []struct {
 			Wrap, Unwrap struct{ UnsignedObserved struct{ Value int } }
 		}
@@ -210,7 +217,7 @@ func TestEnrolledOperatorFlow(t *testing.T) {
 	if err := json.Unmarshal(first.Snapshot, &snap); err != nil {
 		t.Fatal(err)
 	}
-	if snap.Build.Version != "integration-build" || snap.Zenon.NodeSync.Value != "synced" || len(snap.Networks) != 1 || snap.Networks[0].Wrap.UnsignedObserved.Value != 3 || snap.Networks[0].Unwrap.UnsignedObserved.Value != 1 {
+	if snap.Build.Version != "integration-build" || snap.Zenon.NodeSync.Value != "synced" || snap.Zenon.ReceiveHold != nil || len(snap.Networks) != 1 || snap.Networks[0].Wrap.UnsignedObserved.Value != 3 || snap.Networks[0].Unwrap.UnsignedObserved.Value != 1 {
 		t.Fatalf("wrong collector snapshot: %s", first.Snapshot)
 	}
 	b, _ := json.Marshal(first)
@@ -277,5 +284,27 @@ func TestEnrolledOperatorFlow(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Logf("accepted sequence %d: version %s, Zenon %s, 3 wraps, 1 unwrap; sequence %d: socket unreachable", first.Sequence, snap.Build.Version, snap.Zenon.NodeSync.Value, lost.Latest.Report.Sequence)
+	heldOrch, _ := start(t, filepath.Join(bin, "orchestrator-socket"), "ready", socket, "hold")
+	capture(url, renewed)
+	heldStatus := status()
+	heldOrch.stop(t)
+	if heldStatus.Latest == nil || heldStatus.Latest.Report.Sequence != 3 || heldStatus.Latest.Report.LocalRead != "ok" {
+		t.Fatalf("unexpected held report: %+v", heldStatus)
+	}
+	var heldSnap struct {
+		Zenon struct {
+			ReceiveHold *struct {
+				Height   uint64
+				Since    time.Time
+				Attempts uint64
+			}
+		}
+	}
+	if err := json.Unmarshal(heldStatus.Latest.Report.Snapshot, &heldSnap); err != nil {
+		t.Fatal(err)
+	}
+	if heldSnap.Zenon.ReceiveHold == nil || heldSnap.Zenon.ReceiveHold.Height != 16221 || heldSnap.Zenon.ReceiveHold.Attempts != 3 || heldSnap.Zenon.ReceiveHold.Since.IsZero() {
+		t.Fatalf("wrong held snapshot: %s", heldStatus.Latest.Report.Snapshot)
+	}
+	t.Logf("accepted sequence %d: version %s, Zenon %s, 3 wraps, 1 unwrap; sequence %d: socket unreachable; sequence %d: receiveHold height %d", first.Sequence, snap.Build.Version, snap.Zenon.NodeSync.Value, lost.Latest.Report.Sequence, heldStatus.Latest.Report.Sequence, heldSnap.Zenon.ReceiveHold.Height)
 }

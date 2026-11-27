@@ -65,7 +65,7 @@ curl --fail-with-body --silent --show-error \
 
 Each node includes its name, stream ID, configured producer when available, creation time, certificate expiry, reporter access (`active`, `expired`, or `revoked`), and delivery (`never`, `fresh`, or `stale`). The `status` field summarizes reporter health as Online, Unavailable, Stale, Awaiting report, Revoked or Certificate expired. The optional `error` field gives the socket or delivery reason. A node awaiting its first report has `latest: null`. Each receipt includes the original heartbeat digest, receipt time, optional socket-read duration in microseconds, sequence, local-read status and snapshot. A failed local read has a null snapshot. When available, `historicalSuccess` holds the previous successful receipt with its original timestamp.
 
-Snapshots include build, phase, bridge state, Zenon sync, frontier and processed heights, and every reported network’s sync, scan and wrap/unwrap observations with their quality and timestamps. The v1 response uses an explicit set of telemetry fields. IPv4 and IPv6 literals in node names and build labels are redacted. Credentials and pending invitations are private to receiver administration.
+Snapshots include build, phase, bridge state, Zenon sync, frontier, processed heights and active receive holds, and every reported network’s sync, scan and wrap/unwrap observations with their quality and timestamps. The v1 response uses an explicit set of telemetry fields. IPv4 and IPv6 literals in node names and build labels are redacted. Credentials and pending invitations are private to receiver administration.
 
 Missing, invalid, expired and revoked tokens return HTTP 401. An unknown stream returns 404 after authentication. Each token can average one request per second with a burst of ten. On HTTP 429, wait for the `Retry-After` interval before retrying. Reporters normally send a heartbeat about once a minute.
 
@@ -104,7 +104,7 @@ The managed receiver starts its own fleet. Existing manually enrolled collectors
 
 ## Try the complete flow
 
-The integration test runs the two command-line programs and the **actual Unix socket server and snapshot store** from orchestrator commit `aea5eb03fdb97b77d936d37633e99aab62792c08` on `codex/heartbeat-v1`. It seeds the store with known observations, creates temporary server and operator certificate authorities, generates a reporter key and signed certificate request, and enrolls the issued certificate against one stream. It uses loopback and disposable state. It needs Linux, a Go toolchain with the orchestrator's dependencies, and a checkout of that commit. All Bridge Health binaries build independently from this repository.
+The integration test runs the two command-line programs and the **actual Unix socket server and snapshot store** from orchestrator commit `2032ce510e46e608122350d96caa42044e958b6e` on `dev`. It seeds the store with known observations, creates temporary server and operator certificate authorities, generates a reporter key and signed certificate request, and enrolls the issued certificate against one stream. It uses loopback and disposable state. It needs Linux, a Go toolchain with the orchestrator's dependencies, and a checkout of that commit. All Bridge Health binaries build independently from this repository.
 
 ```sh
 go build -o bin/ ./cmd/...

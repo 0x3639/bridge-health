@@ -47,3 +47,40 @@ func TestUniqueNetworks(t *testing.T) {
 		t.Fatal("accepted duplicate IDs")
 	}
 }
+
+func TestReceiveHoldContract(t *testing.T) {
+	c, err := Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("schemas/testdata/startup.heartbeat.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		hold    any
+		wantErr bool
+	}{
+		{"null hold", nil, false},
+		{"active hold", map[string]any{"height": 16221, "since": "2026-11-21T12:00:00Z", "attempts": 3}, false},
+		{"extra field", map[string]any{"height": 16221, "since": "2026-11-21T12:00:00Z", "attempts": 3, "cause": "text"}, true},
+		{"since after sampledAt", map[string]any{"height": 16221, "since": "2026-11-21T12:00:02Z", "attempts": 3}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var doc map[string]any
+			if err := json.Unmarshal(b, &doc); err != nil {
+				t.Fatal(err)
+			}
+			doc["snapshot"].(map[string]any)["zenon"].(map[string]any)["receiveHold"] = tc.hold
+			encoded, err := json.Marshal(doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = c.Report(encoded)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("Report() error = %v, wantErr = %v", err, tc.wantErr)
+			}
+		})
+	}
+}
